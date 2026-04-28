@@ -1,4 +1,5 @@
 """Backtesting package — event-driven simulation with realistic costs."""
+
 from .engine import BacktestEngine, BacktestResult, BacktestTrade
 from .costs import CostModel, TradeCosts
 from .fill_simulator import FillSimulator, FillResult, FillStatus

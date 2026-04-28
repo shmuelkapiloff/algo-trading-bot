@@ -55,7 +55,9 @@ class TestCostModel:
         # SEC fee
         assert cost.sec_fee_usd == pytest.approx(10_000.0 * SEC_FEE_RATE, rel=1e-6)
         # FINRA TAF
-        assert cost.finra_taf_usd == pytest.approx(100.0 * FINRA_TAF_PER_SHARE, rel=1e-6)
+        assert cost.finra_taf_usd == pytest.approx(
+            100.0 * FINRA_TAF_PER_SHARE, rel=1e-6
+        )
         assert cost.total_usd > 0
 
     def test_buy_side_no_regulatory_fees(self):
@@ -133,7 +135,10 @@ class TestFillSimulator:
         fills = sum(
             1
             for _ in range(200)
-            if sim.simulate_fill(10, 100.0, 100_000, 500_000, is_marketable=False).filled_qty > 0
+            if sim.simulate_fill(
+                10, 100.0, 100_000, 500_000, is_marketable=False
+            ).filled_qty
+            > 0
         )
         # Non-marketable fill rate should be < marketable (which is ~95%)
         assert fills < 190  # at most 95%

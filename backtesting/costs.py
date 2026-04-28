@@ -96,12 +96,12 @@ class CostModel:
     def _impact_bps(self, adv_ratio: float) -> float:
         """Tiered market-impact slippage based on order size / ADV."""
         if adv_ratio < 0.005:
-            return self.slippage_bps_base            # < 0.5 % ADV
+            return self.slippage_bps_base  # < 0.5 % ADV
         if adv_ratio < 0.010:
-            return self.slippage_bps_base + 2.0      # 0.5 – 1 %
+            return self.slippage_bps_base + 2.0  # 0.5 – 1 %
         if adv_ratio < 0.020:
-            return self.slippage_bps_base + 5.0      # 1 – 2 %
-        return self.slippage_bps_base + 10.0          # > 2 %
+            return self.slippage_bps_base + 5.0  # 1 – 2 %
+        return self.slippage_bps_base + 10.0  # > 2 %
 
     # ------------------------------------------------------------------
     # Public API
@@ -109,7 +109,7 @@ class CostModel:
 
     def estimate_one_way(
         self,
-        side: str,           # "buy" | "sell"
+        side: str,  # "buy" | "sell"
         notional_usd: float,
         shares: float,
         adv_usd: float,

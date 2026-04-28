@@ -13,7 +13,7 @@ from __future__ import annotations
 import logging
 from dataclasses import dataclass
 from datetime import date, datetime, timedelta, timezone
-from typing import Any
+from typing import Any, Dict, Optional, Set
 
 import pandas as pd
 from sqlalchemy.ext.asyncio import AsyncSession, async_sessionmaker
@@ -215,3 +215,145 @@ class PerformanceTracker:
         rolling_max = cumulative.cummax()
         drawdown = (cumulative - rolling_max) / self._initial_equity
         return float(drawdown.min())
+
+
+# ===========================================================================
+# Per-Strategy Drawdown Monitor
+# ===========================================================================
+
+
+@dataclass
+class DrawdownAlert:
+    """Fired when a strategy's drawdown from its high-water mark breaches -limit."""
+
+    strategy_name: str
+    current_pnl: float          # cumulative P&L of this strategy (dollars)
+    hwm_pnl: float              # high-water mark P&L (dollars)
+    drawdown_pct: float         # (current_pnl - hwm_pnl) / initial_equity, negative
+    limit_pct: float            # threshold that was breached (positive, e.g. 0.08)
+
+
+@dataclass
+class StrategySnapshot:
+    """Current drawdown status for a single strategy."""
+
+    strategy_name: str
+    cumulative_pnl: float
+    hwm_pnl: float
+    current_drawdown_pct: float   # negative; 0.0 = at high-water mark
+    is_paused: bool
+    limit_pct: float
+
+
+class StrategyDrawdownTracker:
+    """Tracks per-strategy high-water mark and fires a DrawdownAlert at -limit.
+
+    Usage
+    -----
+        tracker = StrategyDrawdownTracker(drawdown_limit=0.08)
+
+        # After each trade fill for a strategy:
+        alert = tracker.update("momentum", current_cumulative_pnl=950.0)
+        if alert:
+            log.warning("Strategy paused: %s", alert)
+
+        # Check before opening new positions:
+        if tracker.is_paused("momentum"):
+            return  # skip signal
+
+        # Manual review resume (e.g. Monday morning):
+        tracker.resume("momentum")
+
+    Parameters
+    ----------
+    drawdown_limit:
+        Fraction of initial_equity. Default 0.08 = 8%.
+    initial_equity:
+        Portfolio starting equity used to normalise drawdown %.
+        Pass the same value as PerformanceTracker._initial_equity.
+    """
+
+    def __init__(
+        self,
+        drawdown_limit: float = 0.08,
+        initial_equity: float = 10_000.0,
+    ) -> None:
+        self._limit = drawdown_limit
+        self._initial_equity = initial_equity
+        self._hwm: Dict[str, float] = {}      # strategy → peak cumulative P&L
+        self._current: Dict[str, float] = {}  # strategy → latest cumulative P&L
+        self._paused: Set[str] = set()
+
+    # ------------------------------------------------------------------
+    # Public API
+    # ------------------------------------------------------------------
+
+    def update(
+        self, strategy_name: str, current_pnl: float
+    ) -> Optional[DrawdownAlert]:
+        """Update P&L for a strategy; return DrawdownAlert if limit breached.
+
+        Parameters
+        ----------
+        strategy_name:
+            Identifier for the strategy (e.g. "momentum", "mean_reversion").
+        current_pnl:
+            Cumulative P&L in dollars for this strategy since inception.
+
+        Returns
+        -------
+        DrawdownAlert if the strategy newly breached the drawdown limit,
+        None otherwise.
+        """
+        prev_hwm = self._hwm.get(strategy_name, current_pnl)
+        new_hwm = max(prev_hwm, current_pnl)
+        self._hwm[strategy_name] = new_hwm
+        self._current[strategy_name] = current_pnl
+
+        drawdown_pct = (current_pnl - new_hwm) / max(self._initial_equity, 1.0)
+        was_paused = strategy_name in self._paused
+
+        if drawdown_pct <= -self._limit and not was_paused:
+            self._paused.add(strategy_name)
+            logger.warning(
+                "[drawdown] Strategy '%s' paused: drawdown=%.1f%% breached limit=%.1f%%",
+                strategy_name,
+                drawdown_pct * 100,
+                self._limit * 100,
+            )
+            return DrawdownAlert(
+                strategy_name=strategy_name,
+                current_pnl=current_pnl,
+                hwm_pnl=new_hwm,
+                drawdown_pct=drawdown_pct,
+                limit_pct=self._limit,
+            )
+        return None
+
+    def is_paused(self, strategy_name: str) -> bool:
+        """Return True if this strategy is paused due to drawdown breach."""
+        return strategy_name in self._paused
+
+    def resume(self, strategy_name: str) -> None:
+        """Re-enable a paused strategy (call after manual EOW review)."""
+        self._paused.discard(strategy_name)
+        logger.info("[drawdown] Strategy '%s' manually resumed.", strategy_name)
+
+    def get_snapshot(self, strategy_name: str) -> StrategySnapshot:
+        """Return current drawdown status for a strategy."""
+        pnl = self._current.get(strategy_name, 0.0)
+        hwm = self._hwm.get(strategy_name, 0.0)
+        dd_pct = (pnl - hwm) / max(self._initial_equity, 1.0)
+        return StrategySnapshot(
+            strategy_name=strategy_name,
+            cumulative_pnl=pnl,
+            hwm_pnl=hwm,
+            current_drawdown_pct=dd_pct,
+            is_paused=strategy_name in self._paused,
+            limit_pct=self._limit,
+        )
+
+    def get_all_snapshots(self) -> Dict[str, StrategySnapshot]:
+        """Return snapshots for every tracked strategy."""
+        all_names = set(self._hwm) | set(self._current)
+        return {name: self.get_snapshot(name) for name in all_names}

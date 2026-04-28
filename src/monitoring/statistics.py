@@ -16,9 +16,11 @@ Usage
 
 Design
 ------
-  - Trade returns are bootstrapped with replacement (no parametric
-    assumption about the return distribution).
-  - Each path has ``horizon_days`` draws.
+  - Trade returns are bootstrapped in contiguous **blocks** (block_size=20)
+    rather than i.i.d. draws. Block bootstrap preserves autocorrelation:
+    consecutive losses during bear-market regimes cluster together, producing
+    realistic drawdown depth. (Efron & Tibshirani, 1993; Politis & Romano, 1994)
+  - Each path has ``horizon_days`` compounded steps.
   - An initial capital of 1.0 is assumed; all results are relative.
   - Paths are accumulated as compounded returns: equity[t] = equity[t-1] × (1 + r)
 """
@@ -46,7 +48,7 @@ class MonteCarloResult:
 
     n_paths: int
     horizon_days: int
-    n_trade_returns: int           # size of the input sample
+    n_trade_returns: int  # size of the input sample
 
     # Equity curve percentiles (each is a list of length horizon_days+1)
     # Index 0 = starting equity (1.0), index T = equity at day T
@@ -110,11 +112,13 @@ class MonteCarloSimulator:
         horizon_days: int = 252,
         seed: int = 42,
         min_sample_size: int = 20,
+        block_size: int = 20,
     ) -> None:
         self.n_paths = n_paths
         self.horizon_days = horizon_days
         self.seed = seed
         self.min_sample_size = min_sample_size
+        self.block_size = block_size
 
     def run(self, trade_returns: List[float]) -> MonteCarloResult:
         """Run the simulation.
@@ -145,20 +149,33 @@ class MonteCarloSimulator:
             )
             flat = [1.0] * (self.horizon_days + 1)
             result.p05 = result.p25 = result.p50 = result.p75 = result.p95 = flat
-            result.terminal_mean = result.terminal_p05 = result.terminal_p50 = result.terminal_p95 = 1.0
+            result.terminal_mean = result.terminal_p05 = result.terminal_p50 = (
+                result.terminal_p95
+            ) = 1.0
             return result
 
         rng = random.Random(self.seed)
 
-        # ── Generate N paths ─────────────────────────────────────────
+        # ── Generate N paths (Block Bootstrap) ───────────────────────────────
+        # Samples contiguous blocks of `block_size` returns rather than i.i.d.
+        # draws. This preserves regime autocorrelation: consecutive losses in a
+        # bear-market phase will cluster together, producing realistic drawdown
+        # depth that simple i.i.d. bootstrap underestimates.
+        n_returns = len(trade_returns)
         all_paths: List[List[float]] = []
         for _ in range(self.n_paths):
             equity = 1.0
             path = [1.0]
-            for _ in range(self.horizon_days):
-                r = rng.choice(trade_returns)
-                equity *= (1.0 + r)
-                path.append(equity)
+            t = 0
+            while t < self.horizon_days:
+                start_idx = rng.randint(0, n_returns - 1)
+                for offset in range(self.block_size):
+                    if t >= self.horizon_days:
+                        break
+                    r = trade_returns[(start_idx + offset) % n_returns]
+                    equity *= 1.0 + r
+                    path.append(equity)
+                    t += 1
             all_paths.append(path)
 
         # ── Compute percentile curves ─────────────────────────────────

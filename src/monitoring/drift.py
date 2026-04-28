@@ -52,13 +52,13 @@ logger = logging.getLogger(__name__)
 @dataclass
 class DriftAlert:
     strategy_name: str
-    drift_type: str           # "win_rate" | "drawdown" | "variance" | "correlation"
-    zscore: float             # how many standard deviations from baseline
-    current_value: float      # current rolling metric
-    baseline_value: float     # baseline mean
-    baseline_std: float       # baseline standard deviation
+    drift_type: str  # "win_rate" | "drawdown" | "variance" | "correlation"
+    zscore: float  # how many standard deviations from baseline
+    current_value: float  # current rolling metric
+    baseline_value: float  # baseline mean
+    baseline_std: float  # baseline standard deviation
     message: str
-    severity: str = "warn"    # "warn" | "critical"
+    severity: str = "warn"  # "warn" | "critical"
     fired_at: datetime = field(default_factory=lambda: datetime.now(timezone.utc))
 
 
@@ -91,7 +91,9 @@ class DriftReport:
             f"(z={self.drawdown_zscore:.2f})"
         ]
         for alert in self.alerts:
-            lines.append(f"  ⚠ ALERT [{alert.drift_type}] z={alert.zscore:.2f}: {alert.message}")
+            lines.append(
+                f"  ⚠ ALERT [{alert.drift_type}] z={alert.zscore:.2f}: {alert.message}"
+            )
         return "\n".join(lines)
 
 
@@ -164,9 +166,19 @@ class DriftDetector:
         win_rate = len(wins) / n
 
         # Rolling window metrics — compute over sub-windows for std estimation
-        sub_win_rates = self._sub_window_metric(historical_returns, self.window, lambda rs: sum(1 for r in rs if r > 0) / max(len(rs), 1))
-        sub_drawdowns = self._sub_window_metric(historical_returns, self.window, self._max_drawdown_from_returns)
-        sub_variances = self._sub_window_metric(historical_returns, self.window, lambda rs: statistics.stdev(rs) if len(rs) > 1 else 0.0)
+        sub_win_rates = self._sub_window_metric(
+            historical_returns,
+            self.window,
+            lambda rs: sum(1 for r in rs if r > 0) / max(len(rs), 1),
+        )
+        sub_drawdowns = self._sub_window_metric(
+            historical_returns, self.window, self._max_drawdown_from_returns
+        )
+        sub_variances = self._sub_window_metric(
+            historical_returns,
+            self.window,
+            lambda rs: statistics.stdev(rs) if len(rs) > 1 else 0.0,
+        )
 
         self._baselines[strategy_name] = {
             "n": len(historical_returns),
@@ -251,13 +263,19 @@ class DriftDetector:
             n_live=len(live_returns),
             win_rate_baseline=base["win_rate_mean"],
             win_rate_live=win_rate_live,
-            win_rate_zscore=_z(win_rate_live, base["win_rate_mean"], base["win_rate_std"]),
+            win_rate_zscore=_z(
+                win_rate_live, base["win_rate_mean"], base["win_rate_std"]
+            ),
             drawdown_baseline=base["drawdown_mean"],
             drawdown_live=drawdown_live,
-            drawdown_zscore=_z(drawdown_live, base["drawdown_mean"], base["drawdown_std"]),
+            drawdown_zscore=_z(
+                drawdown_live, base["drawdown_mean"], base["drawdown_std"]
+            ),
             variance_baseline=base["variance_mean"],
             variance_live=variance_live,
-            variance_zscore=_z(variance_live, base["variance_mean"], base["variance_std"]),
+            variance_zscore=_z(
+                variance_live, base["variance_mean"], base["variance_std"]
+            ),
             alerts=alerts,
         )
 
@@ -355,16 +373,14 @@ class DriftDetector:
         peak = 1.0
         max_dd = 0.0
         for r in returns:
-            equity *= (1.0 + r)
+            equity *= 1.0 + r
             peak = max(peak, equity)
             dd = (peak - equity) / max(peak, 1e-9)
             max_dd = max(max_dd, dd)
         return max_dd
 
     @staticmethod
-    def _sub_window_metric(
-        returns: List[float], window: int, fn
-    ) -> List[float]:
+    def _sub_window_metric(returns: List[float], window: int, fn) -> List[float]:
         """Apply ``fn`` to rolling sub-windows to estimate metric variability."""
         results = []
         for i in range(window, len(returns) + 1, max(window // 5, 1)):

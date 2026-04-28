@@ -40,7 +40,9 @@ def _api_post(path: str, payload: dict | None = None) -> tuple[bool, str]:
     url = f"{_CONTROL_API_URL}{path}"
     headers = {"X-API-Key": _CONTROL_API_KEY, "Content-Type": "application/json"}
     try:
-        resp = requests.post(url, json=payload or {}, headers=headers, timeout=_REQUEST_TIMEOUT)
+        resp = requests.post(
+            url, json=payload or {}, headers=headers, timeout=_REQUEST_TIMEOUT
+        )
         if resp.ok:
             data = resp.json()
             return True, data.get("message", "OK")
@@ -72,6 +74,7 @@ def _load_trading_state() -> str:
     # Fallback: try Redis directly
     try:
         import redis as _redis  # type: ignore
+
         r = _redis.Redis.from_url(os.getenv("REDIS_URL", "redis://localhost:6379/0"))
         state = r.get("algotrader:state")
         return state.decode() if state else "unknown"
@@ -84,6 +87,7 @@ def _load_recent_alerts(n: int = 50) -> list[dict]:
     try:
         import json
         import redis as _redis  # type: ignore
+
         r = _redis.Redis.from_url(os.getenv("REDIS_URL", "redis://localhost:6379/0"))
         raw = r.lrange("algotrader:alerts", 0, n - 1)
         alerts = []
@@ -174,7 +178,9 @@ _RUNBOOKS = [
 
 def render():
     st.header("Alerts & Runbooks")
-    st.caption("Emergency controls and incident playbooks. All trading commands go through the FastAPI control plane.")
+    st.caption(
+        "Emergency controls and incident playbooks. All trading commands go through the FastAPI control plane."
+    )
 
     # ── Trading state banner ───────────────────────────────────────────
     state = _load_trading_state()
@@ -233,7 +239,9 @@ def render():
             icon = {"critical": "🔴", "warn": "🟡", "info": "ℹ️"}.get(severity, "⚪")
             st.write(f"{icon} `{ts}` — {msg}")
     else:
-        st.info("No recent alerts in Redis. System may not be running, or no alerts have fired.")
+        st.info(
+            "No recent alerts in Redis. System may not be running, or no alerts have fired."
+        )
 
     st.divider()
 
