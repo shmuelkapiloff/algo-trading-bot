@@ -53,6 +53,7 @@ logger = logging.getLogger("smoke_test")
 # Test result
 # ---------------------------------------------------------------------------
 
+
 class TestResult:
     def __init__(self, test_id: int, name: str) -> None:
         self.test_id = test_id
@@ -72,6 +73,7 @@ class TestResult:
 # Helpers
 # ---------------------------------------------------------------------------
 
+
 def _get_env(key: str) -> str:
     val = os.environ.get(key)
     if not val:
@@ -90,9 +92,9 @@ def _alpaca_headers() -> dict:
 
 
 def _base_url() -> str:
-    return os.environ.get(
-        "APCA_BASE_URL", "https://paper-api.alpaca.markets"
-    ).rstrip("/")
+    return os.environ.get("APCA_BASE_URL", "https://paper-api.alpaca.markets").rstrip(
+        "/"
+    )
 
 
 async def _alpaca_get(path: str, client: httpx.AsyncClient) -> dict:
@@ -126,6 +128,7 @@ async def _alpaca_patch(path: str, body: dict, client: httpx.AsyncClient) -> dic
 # ---------------------------------------------------------------------------
 # Test implementations
 # ---------------------------------------------------------------------------
+
 
 async def test_1_connectivity(verbose: bool) -> TestResult:
     """
@@ -161,9 +164,13 @@ async def test_1_connectivity(verbose: bool) -> TestResult:
             assert len(bars["bars"]) > 0, "no bars returned for SPY"
 
             if verbose:
-                logger.info("  account_id=%s equity=%s", account["id"], account["equity"])
+                logger.info(
+                    "  account_id=%s equity=%s", account["id"], account["equity"]
+                )
                 logger.info("  market_open=%s", clock["is_open"])
-                logger.info("  positions=%d  SPY_bars=%d", len(positions), len(bars["bars"]))
+                logger.info(
+                    "  positions=%d  SPY_bars=%d", len(positions), len(bars["bars"])
+                )
 
         r.passed = True
     except Exception as exc:
@@ -198,7 +205,10 @@ async def test_2_bracket_order(verbose: bool) -> TestResult:
             order_id = order["id"]
             assert order_id, "order response missing 'id'"
             assert order["status"] in (
-                "pending_new", "new", "accepted", "held"
+                "pending_new",
+                "new",
+                "accepted",
+                "held",
             ), f"unexpected order status: {order['status']}"
 
             if verbose:
@@ -217,7 +227,9 @@ async def test_2_bracket_order(verbose: bool) -> TestResult:
             updated = await _alpaca_get(f"orders/{order_id}", client)
             final_status = updated.get("status", "")
             assert final_status in (
-                "canceled", "cancelled", "pending_cancel"
+                "canceled",
+                "cancelled",
+                "pending_cancel",
             ), f"expected cancelled, got: {final_status!r}"
 
             if verbose:
@@ -249,6 +261,7 @@ async def test_3_oms_event_logging(verbose: bool) -> TestResult:
 
         # Import async session factory
         from sqlalchemy.ext.asyncio import create_async_engine, async_sessionmaker
+
         engine = create_async_engine(db_url, echo=False)
         session_factory = async_sessionmaker(engine, expire_on_commit=False)
 
@@ -256,7 +269,9 @@ async def test_3_oms_event_logging(verbose: bool) -> TestResult:
 
         # Log a test order lifecycle
         test_order_id = f"smoke_test_{int(time.time())}"
-        await ledger.log_submission("smoke_sym", test_order_id, "buy", 1, 100.00, "smoke_test")
+        await ledger.log_submission(
+            "smoke_sym", test_order_id, "buy", 1, 100.00, "smoke_test"
+        )
         await ledger.log_ack("smoke_sym", test_order_id)
         await ledger.log_fill("smoke_sym", test_order_id, 100.00, 1, "buy")
 
@@ -266,7 +281,9 @@ async def test_3_oms_event_logging(verbose: bool) -> TestResult:
 
         event_types = {e.event_type.value for e in events}
         assert "submitted" in event_types, "missing submitted event"
-        assert "acked" in event_types or "filled" in event_types, "missing acked/filled event"
+        assert (
+            "acked" in event_types or "filled" in event_types
+        ), "missing acked/filled event"
 
         if verbose:
             logger.info("  order_id=%s events=%s", test_order_id, event_types)
@@ -297,14 +314,19 @@ async def test_4_disconnect_safe_mode(verbose: bool) -> TestResult:
 
         # Verify initial state
         initial = state_store.get_state()
-        assert initial in ("running", "idle", "paper"), \
-            f"unexpected initial state: {initial}"
+        assert initial in (
+            "running",
+            "idle",
+            "paper",
+        ), f"unexpected initial state: {initial}"
 
         # Simulate a broker disconnect by calling safe-mode transition
         await state_store.pause(reason="smoke_test:simulated_disconnect")
         paused_state = state_store.get_state()
-        assert paused_state in ("paused", "safe_mode"), \
-            f"expected paused/safe_mode, got: {paused_state}"
+        assert paused_state in (
+            "paused",
+            "safe_mode",
+        ), f"expected paused/safe_mode, got: {paused_state}"
 
         if verbose:
             logger.info("  initial_state=%s  after_pause=%s", initial, paused_state)
@@ -315,8 +337,9 @@ async def test_4_disconnect_safe_mode(verbose: bool) -> TestResult:
         # Resume for cleanup
         await state_store.resume(reason="smoke_test:cleanup")
         resumed_state = state_store.get_state()
-        assert not state_store.is_paused(), \
-            f"state_store should not be paused after resume; state={resumed_state}"
+        assert (
+            not state_store.is_paused()
+        ), f"state_store should not be paused after resume; state={resumed_state}"
 
         if verbose:
             logger.info("  resumed_state=%s", resumed_state)
@@ -351,8 +374,7 @@ async def test_5_late_event_reconciliation(verbose: bool) -> TestResult:
         machine.transition(order_id, "filled")
 
         filled_state = machine.get_state(order_id)
-        assert filled_state == OrderState.FILLED, \
-            f"expected FILLED, got {filled_state}"
+        assert filled_state == OrderState.FILLED, f"expected FILLED, got {filled_state}"
 
         # Simulate late PARTIAL event after FILLED
         # The state machine should reject/ignore this late transition
@@ -360,18 +382,22 @@ async def test_5_late_event_reconciliation(verbose: bool) -> TestResult:
             machine.transition(order_id, "partial_fill")
             # If it didn't raise, verify the state wasn't rolled back
             final_state = machine.get_state(order_id)
-            assert final_state == OrderState.FILLED, \
-                f"FILLED should not be overwritten by late PARTIAL; got {final_state}"
+            assert (
+                final_state == OrderState.FILLED
+            ), f"FILLED should not be overwritten by late PARTIAL; got {final_state}"
         except (ValueError, RuntimeError):
             # Raising an error on invalid transition is also acceptable
             final_state = machine.get_state(order_id)
-            assert final_state == OrderState.FILLED, \
-                f"state reverted unexpectedly after rejected transition; got {final_state}"
+            assert (
+                final_state == OrderState.FILLED
+            ), f"state reverted unexpectedly after rejected transition; got {final_state}"
 
         if verbose:
             logger.info(
                 "  order_id=%s  filled_state=%s  final_after_late=%s",
-                order_id, filled_state, final_state
+                order_id,
+                filled_state,
+                final_state,
             )
 
         r.passed = True
@@ -440,7 +466,8 @@ def main() -> None:
         description="Phase 1.5 smoke tests for AlgoTrader Pro",
     )
     parser.add_argument(
-        "--verbose", "-v",
+        "--verbose",
+        "-v",
         action="store_true",
         help="Show detailed output and stack traces",
     )
@@ -453,9 +480,7 @@ def main() -> None:
     )
     args = parser.parse_args()
 
-    success = asyncio.run(
-        run_smoke_tests(test_ids=args.test_id, verbose=args.verbose)
-    )
+    success = asyncio.run(run_smoke_tests(test_ids=args.test_id, verbose=args.verbose))
     sys.exit(0 if success else 1)
 
 

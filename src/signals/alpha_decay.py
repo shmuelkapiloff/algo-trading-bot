@@ -46,7 +46,7 @@ DEFAULT_TTL_DAYS: Dict[str, int] = {
     "trend_following": 30,
 }
 
-_SAFETY_BUFFER = 0.80       # Use 80% of optimal TTL (plan §11א)
+_SAFETY_BUFFER = 0.80  # Use 80% of optimal TTL (plan §11א)
 _MIN_TTL_DAYS = 1
 _MAX_HOLD_DAYS = 20
 _MIN_TRADES_FOR_CALIBRATION = 20
@@ -55,15 +55,16 @@ _MIN_TRADES_FOR_CALIBRATION = 20
 @dataclass
 class AlphaDecayResult:
     """Result of an alpha decay measurement for one strategy."""
+
     strategy_name: str
     lookback_days: int
     n_trades: int
-    decay_curve: Dict[int, float]    # hold_day → avg_return_pct
-    optimal_ttl_days: int            # last day with positive avg_return
-    half_life_days: Optional[int]    # day when avg_return = 50% of peak
-    calibrated_ttl_days: int         # optimal_ttl × safety_buffer
+    decay_curve: Dict[int, float]  # hold_day → avg_return_pct
+    optimal_ttl_days: int  # last day with positive avg_return
+    half_life_days: Optional[int]  # day when avg_return = 50% of peak
+    calibrated_ttl_days: int  # optimal_ttl × safety_buffer
     calibrated_ttl_seconds: int
-    calibrated: bool                 # False if not enough data → used default
+    calibrated: bool  # False if not enough data → used default
 
 
 class AlphaDecayDetector:
@@ -100,7 +101,9 @@ class AlphaDecayDetector:
         if len(trades) < _MIN_TRADES_FOR_CALIBRATION:
             logger.info(
                 "[alpha_decay] %s: only %d trades (need %d) — using default TTL",
-                strategy_name, len(trades), _MIN_TRADES_FOR_CALIBRATION
+                strategy_name,
+                len(trades),
+                _MIN_TRADES_FOR_CALIBRATION,
             )
             return self._default_result(strategy_name, lookback_days, len(trades))
 
@@ -112,9 +115,11 @@ class AlphaDecayDetector:
         logger.info(
             "[alpha_decay] %s: optimal_ttl=%dd  half_life=%s  calibrated=%dd  "
             "trades=%d",
-            strategy_name, optimal_ttl,
+            strategy_name,
+            optimal_ttl,
             f"{half_life}d" if half_life else "N/A",
-            calibrated_ttl, len(trades),
+            calibrated_ttl,
+            len(trades),
         )
 
         return AlphaDecayResult(
@@ -210,14 +215,16 @@ class AlphaDecayDetector:
                 hold_days = (dt - entry["entry_date"]).days
                 if hold_days > 0 and entry["entry_price"] > 0:
                     ret = (price - entry["entry_price"]) / entry["entry_price"]
-                    trades.append({
-                        "entry_date": entry["entry_date"],
-                        "exit_date": dt,
-                        "entry_price": entry["entry_price"],
-                        "exit_price": price,
-                        "hold_days": hold_days,
-                        "return_pct": ret,
-                    })
+                    trades.append(
+                        {
+                            "entry_date": entry["entry_date"],
+                            "exit_date": dt,
+                            "entry_price": entry["entry_price"],
+                            "exit_price": price,
+                            "hold_days": hold_days,
+                            "return_pct": ret,
+                        }
+                    )
 
         return trades
 

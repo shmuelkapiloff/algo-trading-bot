@@ -276,3 +276,116 @@ def verify_token(token: FencingToken) -> tuple[bool, str]:
         return False, f"verification_error:{type(exc).__name__}"
 
     return True, "valid"
+
+
+# ---------------------------------------------------------------------------
+# ★ NEW P2: Renewal protocol for emergency tokens (timeout > 5 min)
+# ---------------------------------------------------------------------------
+
+_MAX_RENEWAL_SECONDS = 300  # 5 minutes — max allowed per renewal
+_MAX_TOTAL_SECONDS = 1800    # 30 minutes — absolute cap for any token chain
+
+
+def renew_token(
+    token: FencingToken,
+    extension_seconds: int = 300,
+    max_total_lifetime_seconds: int = _MAX_TOTAL_SECONDS,
+) -> FencingToken:
+    """
+    Renew an emergency fencing token before it expires.
+
+    Designed for long-running emergency operations (broker failover, manual
+    position close-out) that may exceed the initial 60-second TTL.
+
+    Rules
+    -----
+    - Token must currently be VALID (not expired, signature OK).
+    - Extension is capped at _MAX_RENEWAL_SECONDS (5 min) per call.
+    - Total lifetime from `issued_at` cannot exceed `max_total_lifetime_seconds`.
+    - A renewed token retains the same `incident_id` for audit-trail continuity.
+    - The severity must be "emergency" — short-lived tokens (warning/critical)
+      are not renewable; they should be re-issued.
+
+    Parameters
+    ----------
+    token:
+        The token to renew. Must be currently valid.
+    extension_seconds:
+        How many seconds to extend validity (capped at 300 s per call).
+    max_total_lifetime_seconds:
+        Hard cap on the total token chain lifetime from `issued_at`.
+
+    Returns
+    -------
+    A new, freshly signed FencingToken with extended `valid_until`.
+
+    Raises
+    ------
+    ValueError  — token is expired, invalid signature, wrong severity,
+                  or would exceed max total lifetime.
+    RuntimeError — private key not loaded.
+    """
+    if _PRIVATE_KEY is None:
+        raise RuntimeError("Private key not loaded — call init_keys() first.")
+
+    if token.severity != "emergency":
+        raise ValueError(
+            f"Only 'emergency' tokens can be renewed; got severity='{token.severity}'. "
+            "Re-issue a new token for non-emergency operations."
+        )
+
+    is_valid, reason = verify_token(token)
+    if not is_valid:
+        raise ValueError(f"Cannot renew invalid/expired token: {reason}")
+
+    # Cap per-renewal extension
+    actual_extension = min(extension_seconds, _MAX_RENEWAL_SECONDS)
+
+    new_valid_until = time.time() + actual_extension
+
+    # Enforce total lifetime cap (measured from original issued_at)
+    total_elapsed = new_valid_until - token.issued_at
+    if total_elapsed > max_total_lifetime_seconds:
+        allowed_extension = max_total_lifetime_seconds - (time.time() - token.issued_at)
+        if allowed_extension <= 0:
+            raise ValueError(
+                f"Token chain has exceeded max total lifetime of "
+                f"{max_total_lifetime_seconds}s. Issue a new token with "
+                "explicit operator approval."
+            )
+        new_valid_until = time.time() + allowed_extension
+        logger.warning(
+            "[fencing] Renewal capped: extension limited to %.0fs "
+            "(max_total=%ds, incident_id=%s)",
+            allowed_extension,
+            max_total_lifetime_seconds,
+            token.incident_id,
+        )
+
+    import dataclasses
+
+    # Build unsigned renewed token (same incident_id for audit continuity)
+    renewed = dataclasses.replace(
+        token,
+        issued_at=time.time(),   # refresh issued_at for the renewal window
+        valid_until=new_valid_until,
+        signature="",
+    )
+
+    raw_sig = _PRIVATE_KEY.sign(
+        renewed._payload_bytes(),
+        padding.PKCS1v15(),
+        hashes.SHA256(),
+    )
+    sig_b64 = base64.b64encode(raw_sig).decode()
+    renewed = dataclasses.replace(renewed, signature=sig_b64)
+
+    logger.info(
+        "[fencing] Token renewed: incident_id=%s  new_valid_until=%.0f  "
+        "extension=%.0fs  severity=%s",
+        token.incident_id,
+        new_valid_until,
+        actual_extension,
+        token.severity,
+    )
+    return renewed

@@ -42,7 +42,7 @@ from ..analysis.market_regime import MarketRegime
 
 logger = logging.getLogger(__name__)
 
-_MIN_BARS = 80          # minimum bars needed for EMA50 + MACD + 64-day momentum lookback
+_MIN_BARS = 80  # minimum bars needed for EMA50 + MACD + 64-day momentum lookback
 _MOMENTUM_LOOKBACK = 64  # ~3 calendar months of trading days
 
 

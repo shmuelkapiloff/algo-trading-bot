@@ -130,6 +130,23 @@ class ReconciliationService:
                     "reconcile: order %s filled (discovered) — recording FILLED",
                     broker_order.broker_order_id,
                 )
+
+                # ★ NEW P2: Overfill guard — cumulative filled must not exceed ordered qty
+                ordered_qty = getattr(broker_order, "ordered_qty", None) or getattr(
+                    broker_order, "qty", broker_order.filled_qty
+                )
+                cumulative_filled = broker_order.filled_qty
+                if cumulative_filled > ordered_qty:
+                    logger.error(
+                        "reconcile: OVERFILL detected for order %s — "
+                        "filled=%d > ordered=%d (broker_id=%s); capping at ordered qty",
+                        broker_order.client_order_id or broker_order.broker_order_id,
+                        cumulative_filled,
+                        ordered_qty,
+                        broker_order.broker_order_id,
+                    )
+                    cumulative_filled = ordered_qty  # safe cap; alert already logged
+
                 await self._ledger.record_event(
                     order_id=broker_order.client_order_id
                     or broker_order.broker_order_id,
@@ -137,7 +154,7 @@ class ReconciliationService:
                     event_type=OrderEventType.FILLED,
                     payload={
                         "broker_order_id": broker_order.broker_order_id,
-                        "filled_qty": broker_order.filled_qty,
+                        "filled_qty": cumulative_filled,
                         "fill_price": broker_order.filled_avg_price,
                         "discovered_by": "reconcile",
                     },

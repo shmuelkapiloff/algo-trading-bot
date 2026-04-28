@@ -59,6 +59,7 @@ from src.monitoring.tca import TcaMonitor
 from src.portfolio.manager import PortfolioManager
 from src.risk.phase1_suite import build_phase1_gateway
 from src.risk.pre_trade_gateway import PreTradeGateway
+from src.risk.stress_engine import StressEngine
 from src.runtime_state import RuntimeStateStore, TradingState
 from src.security.fencing import generate_dev_secret, init_secret
 from src.shutdown import ShutdownDependencies, register_shutdown_handlers
@@ -174,6 +175,7 @@ async def _eod_scan(
     strategies: list,
     universe: list[str],
     alpaca_trading_client,
+    alert_dispatcher=None,
 ) -> None:
     """
     EOD strategy scan — runs at 15:55 ET Monday–Friday.
@@ -218,6 +220,42 @@ async def _eod_scan(
             return
         regime = await get_regime_or_recompute(redis_client, spy_df)
         logger.info("Market regime: %s", regime.value)
+
+        # Regime-change detection → re-run stress engine on open positions
+        _PREV_REGIME_KEY = "algotrader:prev_regime"
+        prev_raw = await redis_client.get(_PREV_REGIME_KEY)
+        prev_regime_value = prev_raw.decode() if prev_raw else None
+        if prev_regime_value and prev_regime_value != regime.value:
+            logger.warning(
+                "Regime changed %s → %s — re-running stress engine on open positions",
+                prev_regime_value,
+                regime.value,
+            )
+            try:
+                import pandas as _pd
+                stress_engine = StressEngine()
+                positions = portfolio.get_all_positions()
+                # Use empty series — real data fed from OMS ledger in production
+                daily_pnl = _pd.Series([], dtype=float)
+                stress_result = stress_engine.compute(positions, daily_pnl)
+                if stress_engine.exceeds_limits(stress_result):
+                    logger.warning(
+                        "Stress limits exceeded after regime change: "
+                        "var99=%.4f es95=%.4f — consider reducing positions",
+                        stress_result.var_99,
+                        stress_result.es_95,
+                    )
+                    await alert_dispatcher.send_alert(
+                        level="WARNING",
+                        message=(
+                            f"Regime changed to {regime.value}: stress limits exceeded. "
+                            f"VaR99={stress_result.var_99:.2%} "
+                            f"ES95={stress_result.es_95:.2%}"
+                        ),
+                    ) if alert_dispatcher else None
+            except Exception:
+                logger.exception("Stress re-run after regime change failed (non-fatal)")
+        await redis_client.set(_PREV_REGIME_KEY, regime.value)
     except Exception:
         logger.exception("EOD scan: failed to determine market regime — aborting")
         return
@@ -251,11 +289,21 @@ async def _eod_scan(
 
     # ── Steps 5–9: Signal generation → risk → submission ────────────
     submitted = 0
+    _submitted_symbols: set[str] = set()  # dedup: one order per symbol per scan
     for strategy in strategies:
         signals = list(strategy.generate_signals(all_bars, regime))
         logger.info("[%s] Generated %d signals", strategy.name, len(signals))
 
         for signal in signals:
+            # Deduplication: skip if another strategy already submitted this symbol
+            if signal.symbol in _submitted_symbols:
+                logger.debug(
+                    "[%s] %s deduplicated (already submitted this scan)",
+                    strategy.name,
+                    signal.symbol,
+                )
+                continue
+
             # Check portfolio pre-conditions
             ok, reason = await portfolio.can_open_position(signal)
             if not ok:
@@ -347,6 +395,7 @@ async def _eod_scan(
                 )
 
                 submitted += 1
+                _submitted_symbols.add(effective_signal.symbol)
                 logger.info(
                     "Order submitted: %s %s x%d (strategy=%s)",
                     effective_signal.side.value.upper(),

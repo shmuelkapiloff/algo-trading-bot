@@ -220,7 +220,9 @@ class PerformanceTracker:
         drawdown = (cumulative - rolling_max) / self._initial_equity
         return float(drawdown.min())
 
-    def _compute_calmar(self, daily_pnl: pd.Series, max_drawdown: float) -> float | None:
+    def _compute_calmar(
+        self, daily_pnl: pd.Series, max_drawdown: float
+    ) -> float | None:
         """Calmar ratio = annualised return / abs(max_drawdown).
 
         Returns None if max drawdown is zero (no losses yet) or fewer

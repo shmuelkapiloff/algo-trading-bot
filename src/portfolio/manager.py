@@ -84,7 +84,9 @@ class PortfolioManager:
         self._settings = settings
         self._positions: dict[str, Position] = {}
         self._equity: float = 0.0
-        self._pdt_count_cache: int = 0  # updated each time can_open_position() is called
+        self._pdt_count_cache: int = (
+            0  # updated each time can_open_position() is called
+        )
 
     # ------------------------------------------------------------------
     # Startup
@@ -139,6 +141,10 @@ class PortfolioManager:
         )
         return total_risk / self._equity
 
+    def get_all_positions(self) -> dict[str, "Position"]:
+        """Return a shallow copy of the current open positions dict."""
+        return dict(self._positions)
+
     def build_portfolio_state(self) -> dict[str, Any]:
         """Build the portfolio_state dict expected by PreTradeGateway."""
         return {
@@ -168,7 +174,9 @@ class PortfolioManager:
 
         # PDT check
         pdt_count = await self._get_pdt_count()
-        self._pdt_count_cache = pdt_count  # keep cache fresh for build_portfolio_state()
+        self._pdt_count_cache = (
+            pdt_count  # keep cache fresh for build_portfolio_state()
+        )
         if pdt_count >= _PDT_LIMIT and self._settings.pdt.pdt_protection_enabled:
             return False, f"PDT limit reached ({pdt_count}/{_PDT_LIMIT})"
 
@@ -254,6 +262,36 @@ class PortfolioManager:
         count = await self._redis.incr(_PDT_KEY)
         logger.debug("PDT counter incremented: %d", count)
         return count
+
+    # Lua script: atomically check limit then increment.
+    # Returns new count, or -1 if already at/above limit.
+    _PDT_LUA = """
+local current = tonumber(redis.call('GET', KEYS[1]) or 0)
+local limit   = tonumber(ARGV[1])
+if current >= limit then
+    return -1
+end
+return redis.call('INCR', KEYS[1])
+"""
+
+    async def check_and_increment_pdt(self) -> int:
+        """Atomic check-then-increment via Lua.
+
+        Returns the new PDT count on success, or -1 if the limit is already
+        reached (meaning the caller must reject the trade).
+        """
+        result = await self._redis.eval(
+            self._PDT_LUA,
+            1,  # number of keys
+            _PDT_KEY,
+            str(_PDT_LIMIT),
+        )
+        new_count = int(result)
+        if new_count == -1:
+            logger.debug("PDT Lua guard: limit %d already reached", _PDT_LIMIT)
+        else:
+            logger.debug("PDT counter incremented atomically: %d", new_count)
+        return new_count
 
     # ------------------------------------------------------------------
     # Internals

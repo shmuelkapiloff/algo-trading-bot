@@ -251,7 +251,11 @@ class TestMomentumReturnFilter:
         )
         # Flat for most of the series, small dip + recovery at the end.
         # 3-month return will be ~0% — below the 10% threshold.
-        prices = [100.0] * 80 + [95.0 - i * 0.5 for i in range(10)] + [96.0 + i * 1.5 for i in range(30)]
+        prices = (
+            [100.0] * 80
+            + [95.0 - i * 0.5 for i in range(10)]
+            + [96.0 + i * 1.5 for i in range(30)]
+        )
         df = _bars_from_prices(prices)
         signals = list(strategy.generate_signals({"FLAT": df}, MarketRegime.BULL))
         # Momentum filter should block any signal

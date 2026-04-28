@@ -48,14 +48,14 @@ from typing import Dict, Optional, Tuple
 
 logger = logging.getLogger(__name__)
 
-VolRegime = str   # "low_vol" | "normal" | "high_vol"
-LiquidityTier = str   # "high" | "mid" | "low" | "illiquid"
+VolRegime = str  # "low_vol" | "normal" | "high_vol"
+LiquidityTier = str  # "high" | "mid" | "low" | "illiquid"
 Cell = Tuple[VolRegime, LiquidityTier]
 
 # Vol regime thresholds
 _VIX_LOW = 15.0
 _VIX_HIGH = 25.0
-_VOL_LOW = 0.12     # annualised
+_VOL_LOW = 0.12  # annualised
 _VOL_HIGH = 0.25
 
 # Liquidity tier thresholds
@@ -73,6 +73,7 @@ _MIN_OBS_FOR_EV = 10
 @dataclass
 class CellStats:
     """Running statistics for one EV surface cell."""
+
     n: int = 0
     sum_return: float = 0.0
     sum_sq_return: float = 0.0
@@ -90,7 +91,7 @@ class CellStats:
     def variance(self) -> float:
         if self.n < 2:
             return 0.0
-        return (self.sum_sq_return / self.n) - (self.mean ** 2)
+        return (self.sum_sq_return / self.n) - (self.mean**2)
 
     @property
     def std(self) -> float:
@@ -136,9 +137,7 @@ class EVSurface:
     ) -> None:
         self._lock = asyncio.Lock()
         self._cells: Dict[Cell, CellStats] = {
-            (v, l): CellStats()
-            for v in self.VOL_REGIMES
-            for l in self.LIQUIDITY_TIERS
+            (v, l): CellStats() for v in self.VOL_REGIMES for l in self.LIQUIDITY_TIERS
         }
 
         # Pre-populate from backtest if provided
@@ -165,7 +164,9 @@ class EVSurface:
         """
         cell = self._cells.get((vol_regime, liquidity_tier))
         if cell is None:
-            logger.debug("[ev_surface] Unknown cell: (%s, %s)", vol_regime, liquidity_tier)
+            logger.debug(
+                "[ev_surface] Unknown cell: (%s, %s)", vol_regime, liquidity_tier
+            )
             return 0.0
         if cell.n < _MIN_OBS_FOR_EV:
             return 0.0
@@ -186,7 +187,8 @@ class EVSurface:
             if key not in self._cells:
                 logger.warning(
                     "[ev_surface] Unknown cell (%s, %s) — skipping update",
-                    vol_regime, liquidity_tier,
+                    vol_regime,
+                    liquidity_tier,
                 )
                 return
             self._cells[key].update(realized_return)
@@ -194,8 +196,7 @@ class EVSurface:
     def get_surface(self) -> dict:
         """Return the full surface snapshot for dashboard display."""
         return {
-            f"{vol}/{liq}": stats.to_dict()
-            for (vol, liq), stats in self._cells.items()
+            f"{vol}/{liq}": stats.to_dict() for (vol, liq), stats in self._cells.items()
         }
 
     def get_cell_stats(

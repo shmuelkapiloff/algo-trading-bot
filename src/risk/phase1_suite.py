@@ -156,3 +156,62 @@ def build_phase1_gateway(portfolio_manager, settings) -> PreTradeGateway:
             ),
         ]
     )
+
+
+# ---------------------------------------------------------------------------
+# ★ NEW P2: CachedCostEstimator — pre-fetch spread_bps for a symbol batch
+# ---------------------------------------------------------------------------
+
+
+class CachedCostEstimator:
+    """
+    Wraps any CostEstimator and pre-fetches spread_bps into a dict at the
+    start of each strategy scan, avoiding N individual DB/API reads.
+
+    Usage (Phase 2)
+    ---------------
+        cached = CachedCostEstimator(live_cost_estimator)
+        await cached.prefetch(symbols=filtered_universe)
+        # Now pass `cached` to SignalViabilityGate / LiquidityGate
+        # — all get_spread_bps() calls hit the in-memory dict.
+    """
+
+    def __init__(self, delegate) -> None:
+        self._delegate = delegate
+        self._cache: dict[str, float] = {}
+
+    async def prefetch(self, symbols: list[str]) -> None:
+        """
+        Bulk-fetch spread_bps for all symbols and store in memory.
+
+        If the delegate has an async `get_spread_bps_batch(symbols)` method,
+        it is called once; otherwise falls back to sequential calls.
+        """
+        import asyncio
+        if hasattr(self._delegate, "get_spread_bps_batch"):
+            batch = await self._delegate.get_spread_bps_batch(symbols)
+            self._cache = batch
+        else:
+            # Sequential fallback (works for Phase 1 stubs)
+            results = await asyncio.gather(
+                *[
+                    asyncio.to_thread(self._delegate.get_spread_bps, s)
+                    if not asyncio.iscoroutinefunction(self._delegate.get_spread_bps)
+                    else self._delegate.get_spread_bps(s)
+                    for s in symbols
+                ]
+            )
+            self._cache = dict(zip(symbols, results))
+
+    def get_spread_bps(self, symbol: str) -> float:
+        """Return pre-fetched spread; falls back to delegate on cache miss."""
+        if symbol in self._cache:
+            return self._cache[symbol]
+        return self._delegate.get_spread_bps(symbol)
+
+    def get_avg_slippage_bps(self) -> float:
+        return self._delegate.get_avg_slippage_bps()
+
+    def invalidate(self) -> None:
+        """Clear cache (call at the start of each new scan)."""
+        self._cache.clear()
