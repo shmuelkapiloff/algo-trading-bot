@@ -141,7 +141,9 @@ def render():
         delta_color="inverse" if not health.get("ok", True) else "normal",
     )
 
-    st.caption("SLO targets: p95 < 2000ms, p99 < 10000ms, fill rate > 85%, recon mismatch ~0.")
+    st.caption(
+        "SLO targets: p95 < 2000ms, p99 < 10000ms, fill rate > 85%, recon mismatch ~0."
+    )
 
     if not tca.empty and "recorded_at" in tca.columns:
         chart_df = (
