@@ -17,6 +17,7 @@ Covers:
 
 Run: pytest tests/test_tca.py -v
 """
+
 from __future__ import annotations
 
 from unittest.mock import AsyncMock, MagicMock, patch
@@ -234,12 +235,12 @@ class TestThrottle:
     async def test_throttle_multiplier_step1(self, tca, redis):
         await redis.set(REDIS_KEY_THROTTLE, 1)
         metrics = await tca.get_metrics()
-        assert metrics.throttle_multiplier == pytest.approx(THROTTLE_FACTOR ** 1)
+        assert metrics.throttle_multiplier == pytest.approx(THROTTLE_FACTOR**1)
 
     async def test_throttle_multiplier_step3(self, tca, redis):
         await redis.set(REDIS_KEY_THROTTLE, 3)
         metrics = await tca.get_metrics()
-        assert metrics.throttle_multiplier == pytest.approx(THROTTLE_FACTOR ** 3)
+        assert metrics.throttle_multiplier == pytest.approx(THROTTLE_FACTOR**3)
 
     async def test_reset_throttle(self, tca, redis):
         await redis.set(REDIS_KEY_THROTTLE, 2)
@@ -250,7 +251,7 @@ class TestThrottle:
     async def test_get_throttle_multiplier_convenience(self, tca, redis):
         await redis.set(REDIS_KEY_THROTTLE, 2)
         mult = await tca.get_throttle_multiplier()
-        assert mult == pytest.approx(THROTTLE_FACTOR ** 2)
+        assert mult == pytest.approx(THROTTLE_FACTOR**2)
 
 
 # ---------------------------------------------------------------------------
@@ -277,7 +278,7 @@ class TestCircuitBreaker:
             await _fill(
                 tca,
                 order_id=f"o{i}",
-                filled_qty=5,     # 50% fill rate
+                filled_qty=5,  # 50% fill rate
                 requested_qty=10,
             )
         state = await state_store.get_state()
@@ -295,6 +296,7 @@ class TestCircuitBreaker:
         await _fill_n(tca, n=5, slippage_bps=0.0)
         # Force latency check
         from trading_bot.src.monitoring.tca import PAUSE_LATENCY_MS
+
         await tca.record_broker_latency(PAUSE_LATENCY_MS + 100.0)
         state = await state_store.get_state()
         assert state == TradingState.PAUSED

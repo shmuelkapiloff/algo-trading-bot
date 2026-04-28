@@ -32,6 +32,7 @@ Usage (called from event handler on every fill):
         fill_latency_ms=120.0, side="buy",
     )
 """
+
 from __future__ import annotations
 
 import json
@@ -50,13 +51,13 @@ logger = logging.getLogger(__name__)
 # Configuration constants
 # ---------------------------------------------------------------------------
 
-TCA_WINDOW: int = 100                # rolling window size (fills)
-PAUSE_SLIPPAGE_BPS: float = 25.0     # auto-pause if avg slippage > this
-PAUSE_FILL_RATE: float = 0.60        # auto-pause if fill rate < this
-PAUSE_LATENCY_MS: float = 2_000.0    # auto-pause if broker latency p95 > this
+TCA_WINDOW: int = 100  # rolling window size (fills)
+PAUSE_SLIPPAGE_BPS: float = 25.0  # auto-pause if avg slippage > this
+PAUSE_FILL_RATE: float = 0.60  # auto-pause if fill rate < this
+PAUSE_LATENCY_MS: float = 2_000.0  # auto-pause if broker latency p95 > this
 THROTTLE_SLIPPAGE_BPS: float = 12.0  # auto-throttle if avg slippage > this
-MAX_THROTTLE_STEPS: int = 3          # max position size reduction steps
-THROTTLE_FACTOR: float = 0.50        # multiplier per throttle step
+MAX_THROTTLE_STEPS: int = 3  # max position size reduction steps
+THROTTLE_FACTOR: float = 0.50  # multiplier per throttle step
 
 REDIS_KEY_FILLS = "tca:fills"
 REDIS_KEY_THROTTLE = "tca:throttle_steps"
@@ -66,16 +67,17 @@ REDIS_KEY_THROTTLE = "tca:throttle_steps"
 # Data structures
 # ---------------------------------------------------------------------------
 
+
 @dataclass
 class FillRecord:
     order_id: str
     symbol: str
-    slippage_bps: float        # positive = paid more than benchmark
-    fill_rate: float           # filled_qty / requested_qty  (0.0–1.0)
+    slippage_bps: float  # positive = paid more than benchmark
+    fill_rate: float  # filled_qty / requested_qty  (0.0–1.0)
     fill_latency_ms: float
-    side: str                  # "buy" | "sell"
-    timestamp: float           # Unix epoch (seconds)
-    within_30s: bool           # fill_latency_ms <= 30_000
+    side: str  # "buy" | "sell"
+    timestamp: float  # Unix epoch (seconds)
+    within_30s: bool  # fill_latency_ms <= 30_000
 
 
 @dataclass
@@ -89,12 +91,13 @@ class TcaMetrics:
     @property
     def throttle_multiplier(self) -> float:
         """Returns the position-size multiplier (1.0 = no throttle)."""
-        return THROTTLE_FACTOR ** self.throttle_steps
+        return THROTTLE_FACTOR**self.throttle_steps
 
 
 # ---------------------------------------------------------------------------
 # TCA Monitor
 # ---------------------------------------------------------------------------
+
 
 class TcaMonitor:
     """
@@ -248,7 +251,7 @@ class TcaMonitor:
 
         # ── Throttle check ────────────────────────────────────────────
         if (
-            metrics.sample_size >= 5   # need at least 5 fills to act
+            metrics.sample_size >= 5  # need at least 5 fills to act
             and metrics.avg_slippage_bps > THROTTLE_SLIPPAGE_BPS
             and metrics.throttle_steps < MAX_THROTTLE_STEPS
         ):
@@ -261,7 +264,7 @@ class TcaMonitor:
                 MAX_THROTTLE_STEPS,
                 metrics.avg_slippage_bps,
                 THROTTLE_SLIPPAGE_BPS,
-                (THROTTLE_FACTOR ** new_steps) * 100,
+                (THROTTLE_FACTOR**new_steps) * 100,
             )
             if self._alerts:
                 await self._alerts.send(
@@ -285,10 +288,7 @@ class TcaMonitor:
             pause_reason = (
                 f"tca_fill_rate_breach:{metrics.fill_rate_pct:.2f}<{PAUSE_FILL_RATE}"
             )
-        elif (
-            latest_latency_ms is not None
-            and latest_latency_ms > PAUSE_LATENCY_MS
-        ):
+        elif latest_latency_ms is not None and latest_latency_ms > PAUSE_LATENCY_MS:
             pause_reason = (
                 f"tca_latency_breach:{latest_latency_ms:.0f}ms>{PAUSE_LATENCY_MS:.0f}ms"
             )

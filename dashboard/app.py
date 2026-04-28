@@ -190,6 +190,16 @@ def load_daily_pnl() -> pd.DataFrame:
 st.sidebar.title("AlgoTrader Pro")
 st.sidebar.caption("Read-only monitoring dashboard")
 
+_PAGES = {
+    "📊 Overview": "overview",
+    "📋 Positions": "positions",
+    "📈 Performance": "performance",
+    "💹 TCA": "tca",
+    "🚨 Alerts & Runbooks": "alerts",
+    "⚙️ Config": "config_ui",
+}
+_selected_page = st.sidebar.radio("Navigate", list(_PAGES.keys()), index=0)
+
 auto_refresh = st.sidebar.checkbox("Auto-refresh (30s)", value=False)
 if auto_refresh:
     import time
@@ -202,7 +212,25 @@ if st.sidebar.button("🔄 Refresh now"):
     st.rerun()
 
 # ---------------------------------------------------------------------------
-# Main layout
+# Page routing — delegate to sub-pages when not on Overview
+# ---------------------------------------------------------------------------
+
+import sys
+import importlib
+
+_page_module = _PAGES[_selected_page]
+if _page_module != "overview":
+    # Import and render the selected sub-page, then stop
+    _mod_path = f"dashboard.pages.{_page_module}"
+    try:
+        _mod = importlib.import_module(_mod_path)
+        _mod.render()
+    except ImportError as _e:
+        st.error(f"Page '{_page_module}' not found: {_e}")
+    st.stop()
+
+# ---------------------------------------------------------------------------
+# Main layout (Overview)
 # ---------------------------------------------------------------------------
 
 st.title("📈 AlgoTrader Pro — Live Monitor")

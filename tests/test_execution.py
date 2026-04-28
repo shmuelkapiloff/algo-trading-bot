@@ -15,6 +15,7 @@ Covers:
 
 Run: pytest tests/test_execution.py -v
 """
+
 from __future__ import annotations
 
 import importlib.util
@@ -80,7 +81,12 @@ class TestOrderRecord:
             assert r.is_terminal() is True
 
     def test_is_not_terminal_for_active_states(self):
-        for state in [OrderState.NEW, OrderState.SENT, OrderState.ACK, OrderState.PARTIAL]:
+        for state in [
+            OrderState.NEW,
+            OrderState.SENT,
+            OrderState.ACK,
+            OrderState.PARTIAL,
+        ]:
             r = _record()
             r.state = state
             assert r.is_terminal() is False

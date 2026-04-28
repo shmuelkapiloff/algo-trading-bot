@@ -21,6 +21,7 @@ Usage (wired by main.py into APScheduler):
     probe = CanaryProbe(fetcher, redis_client, alert_dispatcher)
     await probe.run()  # returns ProbeResult dict
 """
+
 from __future__ import annotations
 
 import asyncio
@@ -42,9 +43,9 @@ logger = logging.getLogger(__name__)
 # ---------------------------------------------------------------------------
 
 CANARY_SYMBOL = "SPY"
-FRESHNESS_THRESHOLD_SEC: float = 90.0     # bar must be younger than this
-PRICE_DEVIATION_THRESHOLD: float = 0.20   # ±20% from last known price
-API_TIMEOUT_SEC: float = 2.0              # Alpaca must respond within 2 s
+FRESHNESS_THRESHOLD_SEC: float = 90.0  # bar must be younger than this
+PRICE_DEVIATION_THRESHOLD: float = 0.20  # ±20% from last known price
+API_TIMEOUT_SEC: float = 2.0  # Alpaca must respond within 2 s
 CONSECUTIVE_FAIL_ALERT_THRESHOLD: int = 2  # alert after N consecutive fails
 
 REDIS_KEY_LAST_RESULT = "canary:last_result"
@@ -55,6 +56,7 @@ REDIS_KEY_LAST_PRICE = "spy:last_price"
 # ---------------------------------------------------------------------------
 # Canary Probe
 # ---------------------------------------------------------------------------
+
 
 class CanaryProbe:
     """

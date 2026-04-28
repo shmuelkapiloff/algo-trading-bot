@@ -64,6 +64,7 @@ from src.security.fencing import generate_dev_secret, init_secret
 from src.shutdown import ShutdownDependencies, register_shutdown_handlers
 from src.signals.mean_reversion import MeanReversionStrategy
 from src.signals.momentum import MomentumStrategy
+from src.signals.trend_following import TrendFollowingStrategy
 
 # ---------------------------------------------------------------------------
 # Logging setup  (call before any other import that might log)
@@ -447,6 +448,7 @@ async def main() -> None:
     strategies = [
         MomentumStrategy(),
         MeanReversionStrategy(),
+        TrendFollowingStrategy(),
     ]
 
     # ------------------------------------------------------------------

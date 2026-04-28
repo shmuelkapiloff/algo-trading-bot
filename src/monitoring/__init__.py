@@ -2,6 +2,7 @@
 
 from .logger import configure_logging
 from .alerts import AlertDispatcher, AlertLevel
+
 # TcaMonitor and CanaryProbe available via direct import:
 #   from src.monitoring.tca import TcaMonitor
 #   from src.monitoring.canary_probe import CanaryProbe

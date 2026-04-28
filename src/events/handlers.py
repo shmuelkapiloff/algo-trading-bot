@@ -111,7 +111,9 @@ class FillHandler:
         if self._tca is not None:
             # vwap_benchmark: price at order-submission time (included in payload
             # when available); fall back to fill_price (0 slippage) for Phase 1.
-            vwap_benchmark = float(payload.get("vwap_benchmark", fill_price) or fill_price)
+            vwap_benchmark = float(
+                payload.get("vwap_benchmark", fill_price) or fill_price
+            )
             requested_qty = int(payload.get("requested_qty", filled_qty) or filled_qty)
             fill_latency_ms = float(payload.get("fill_latency_ms", 0.0) or 0.0)
 
