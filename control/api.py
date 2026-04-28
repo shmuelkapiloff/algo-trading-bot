@@ -44,6 +44,8 @@ from typing import Optional
 from fastapi import Depends, FastAPI, HTTPException, Request, status
 from fastapi.security import HTTPAuthorizationCredentials, HTTPBearer
 from pydantic import BaseModel
+from src.security.audit_trail import SignedAuditTrail
+from src.security.secrets_manager import SecretRef, SecretResolver
 
 logger = logging.getLogger(__name__)
 
@@ -62,6 +64,8 @@ security = HTTPBearer()
 
 _state_store = None  # RuntimeStateStore instance
 _redis_client = None  # redis.asyncio.Redis instance
+_audit_trail = None  # SignedAuditTrail
+_secret_resolver = SecretResolver()
 
 # In-process rate limiter: 30 req/min per IP
 _rate_buckets: dict[str, list] = defaultdict(list)
@@ -71,9 +75,16 @@ _RATE_WINDOW = 60  # seconds
 
 def init_app(redis_client, state_store) -> None:
     """Inject live dependencies. Call once from main.py before serving."""
-    global _redis_client, _state_store
+    global _redis_client, _state_store, _audit_trail
     _redis_client = redis_client
     _state_store = state_store
+
+    # Optional signed audit trail for all critical control-plane commands.
+    audit_secret = _secret_resolver.get(
+        SecretRef(name="CONTROL_AUDIT_SECRET", required=False, default="")
+    )
+    if audit_secret:
+        _audit_trail = SignedAuditTrail(secret=audit_secret.encode())
     logger.info("Control API dependencies injected")
 
 
@@ -103,10 +114,21 @@ async def rate_limit_middleware(request: Request, call_next):
 
 
 def _get_expected_token() -> str:
-    token = os.getenv("CONTROL_API_TOKEN", "")
+    token = _secret_resolver.get(
+        SecretRef(name="CONTROL_API_TOKEN", required=False, default="")
+    )
     if not token:
         raise HTTPException(status_code=503, detail="CONTROL_API_TOKEN not configured")
     return token
+
+
+def _audit(action: str, payload: dict) -> None:
+    if _audit_trail is None:
+        return
+    try:
+        _audit_trail.record(actor="control_api", action=action, payload=payload)
+    except Exception:
+        logger.exception("Control API audit write failed (non-fatal)")
 
 
 def _verify_token(
@@ -207,6 +229,15 @@ async def halt(
     )
     new_state = TradingState.HALTED if success else current
     logger.warning("Control API HALT: reason=%s  success=%s", req.reason, success)
+    _audit(
+        action="halt",
+        payload={
+            "reason": req.reason,
+            "success": success,
+            "from": current.value,
+            "to": new_state.value,
+        },
+    )
     return TransitionResponse(
         success=success,
         old_state=current.value,
@@ -234,6 +265,15 @@ async def pause(
     )
     new_state = TradingState.PAUSED if success else current
     logger.info("Control API PAUSE: success=%s", success)
+    _audit(
+        action="pause",
+        payload={
+            "reason": req.reason,
+            "success": success,
+            "from": current.value,
+            "to": new_state.value,
+        },
+    )
     return TransitionResponse(
         success=success,
         old_state=current.value,
@@ -261,6 +301,15 @@ async def resume(
     )
     new_state = TradingState.ACTIVE if success else current
     logger.info("Control API RESUME: success=%s", success)
+    _audit(
+        action="resume",
+        payload={
+            "reason": req.reason,
+            "success": success,
+            "from": current.value,
+            "to": new_state.value,
+        },
+    )
     return TransitionResponse(
         success=success,
         old_state=current.value,
@@ -288,6 +337,15 @@ async def close_only(
     )
     new_state = TradingState.CLOSE_ONLY if success else current
     logger.info("Control API CLOSE_ONLY: success=%s", success)
+    _audit(
+        action="close_only",
+        payload={
+            "reason": req.reason,
+            "success": success,
+            "from": current.value,
+            "to": new_state.value,
+        },
+    )
     return TransitionResponse(
         success=success,
         old_state=current.value,

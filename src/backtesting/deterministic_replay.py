@@ -46,11 +46,18 @@ import time
 from dataclasses import dataclass, field
 from typing import Any, Dict, List, Optional
 
-from trading_bot.src.execution.order_state_machine import (
-    OrderRecord,
-    OrderState,
-    OrderStateMachine,
-)
+try:
+    from trading_bot.src.execution.order_state_machine import (
+        OrderRecord,
+        OrderState,
+        OrderStateMachine,
+    )
+except ModuleNotFoundError:
+    from src.execution.order_state_machine import (
+        OrderRecord,
+        OrderState,
+        OrderStateMachine,
+    )
 
 logger = logging.getLogger(__name__)
 

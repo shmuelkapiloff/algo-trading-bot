@@ -1,0 +1,13 @@
+{
+  "title": "AlgoTrader SLO",
+  "panels": [
+    {"title": "Broker Latency p95", "type": "timeseries"},
+    {"title": "Broker Latency p99", "type": "timeseries"},
+    {"title": "Fill Rate", "type": "timeseries"},
+    {"title": "Reconciliation Mismatches", "type": "timeseries"},
+    {"title": "SLO Burn Rate", "type": "timeseries"}
+  ],
+  "templating": {"list": []},
+  "schemaVersion": 38,
+  "version": 1
+}

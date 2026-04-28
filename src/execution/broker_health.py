@@ -37,6 +37,8 @@ from dataclasses import dataclass, field
 from enum import Enum
 from typing import Optional
 
+from ..monitoring.otel import add_event, span
+
 logger = logging.getLogger(__name__)
 
 _BROKER_HEALTH_KEY = "algotrader:broker_health"
@@ -128,32 +130,44 @@ class BrokerHealthMonitor:
     # ------------------------------------------------------------------
 
     async def _check_primary(self) -> HealthCheckResult:
-        start = time.monotonic()
-        try:
-            await self._primary.get_account()
-            latency = time.monotonic() - start
-            if latency > self._latency_threshold:
-                logger.warning(
-                    "Primary broker latency %.2fs > threshold %.2fs",
-                    latency,
-                    self._latency_threshold,
+        with span("broker.health_check", broker="primary"):
+            start = time.monotonic()
+            try:
+                await self._primary.get_account()
+                latency = time.monotonic() - start
+                add_event("broker.health_check.done", ok=True, latency_s=latency)
+                if latency > self._latency_threshold:
+                    logger.warning(
+                        "Primary broker latency %.2fs > threshold %.2fs",
+                        latency,
+                        self._latency_threshold,
+                    )
+                    return HealthCheckResult(
+                        broker_name="primary",
+                        ok=False,
+                        latency_s=latency,
+                        error=f"latency_exceeded:{latency:.2f}s",
+                    )
+                return HealthCheckResult(
+                    broker_name="primary",
+                    ok=True,
+                    latency_s=latency,
                 )
+            except Exception as exc:
+                latency = time.monotonic() - start
+                add_event(
+                    "broker.health_check.error",
+                    ok=False,
+                    latency_s=latency,
+                    error=str(exc),
+                )
+                logger.warning("Primary broker health check failed: %s", exc)
                 return HealthCheckResult(
                     broker_name="primary",
                     ok=False,
                     latency_s=latency,
-                    error=f"latency_exceeded:{latency:.2f}s",
+                    error=str(exc),
                 )
-            return HealthCheckResult(broker_name="primary", ok=True, latency_s=latency)
-        except Exception as exc:
-            latency = time.monotonic() - start
-            logger.warning("Primary broker health check failed: %s", exc)
-            return HealthCheckResult(
-                broker_name="primary",
-                ok=False,
-                latency_s=latency,
-                error=str(exc),
-            )
 
     # ------------------------------------------------------------------
     # Failure handling & failover trigger
@@ -208,71 +222,81 @@ class BrokerHealthMonitor:
     # ------------------------------------------------------------------
 
     async def _trigger_failover(self, result: HealthCheckResult) -> None:
-        logger.error(
-            "FAILOVER triggered: %d consecutive failures, last_error=%s",
-            self._consecutive_failures,
-            result.error,
-        )
-
-        # 1. Generate emergency fencing token
-        try:
-            from ..security.fencing_tokens import create_internal_token
-
-            token = create_internal_token(
-                action_code="close_only",
-                validity_seconds=300,  # 5 minutes; renewable
+        with span(
+            "broker.failover.trigger",
+            consecutive_failures=self._consecutive_failures,
+            error=result.error or "",
+        ):
+            logger.error(
+                "FAILOVER triggered: %d consecutive failures, last_error=%s",
+                self._consecutive_failures,
+                result.error,
             )
-            logger.info("Failover fencing token issued: %s", token.incident_id)
-        except Exception as exc:
-            logger.error("Could not generate failover fencing token: %s", exc)
-            token = None
 
-        # 2. Transition to CLOSE_ONLY via RuntimeStateStore
-        try:
-            from ..runtime_state import TradingState
-
-            ok, reason = await self._state_store.force_transition_internal(
-                target=TradingState.CLOSE_ONLY,
-                reason="broker_failover",
-            )
-            if not ok:
-                logger.error("State transition to CLOSE_ONLY failed: %s", reason)
-        except Exception as exc:
-            logger.error("Failed to transition state to CLOSE_ONLY: %s", exc)
-
-        # 3. Record failover mode in Redis
-        await self._redis.set(_BROKER_MODE_KEY, BrokerMode.FAILOVER.value)
-        self._mode = BrokerMode.FAILOVER
-
-        # 4. Alert
-        if self._alerts:
+            # 1. Generate emergency fencing token
             try:
-                await self._alerts.send_alert(
-                    level="CRITICAL",
-                    message=(
-                        f"BROKER FAILOVER activated: {self._consecutive_failures} "
-                        f"consecutive failures. Mode: CLOSE_ONLY. "
-                        f"Error: {result.error}"
-                    ),
+                from ..security.fencing_tokens import create_internal_token
+
+                token = create_internal_token(
+                    action_code="close_only",
+                    validity_seconds=300,  # 5 minutes; renewable
                 )
+                logger.info("Failover fencing token issued: %s", token.incident_id)
+                add_event("broker.failover.token_issued", incident_id=token.incident_id)
+            except Exception as exc:
+                logger.error("Could not generate failover fencing token: %s", exc)
+                add_event("broker.failover.token_failed", error=str(exc))
+                token = None
+
+            # 2. Transition to CLOSE_ONLY via RuntimeStateStore
+            try:
+                from ..runtime_state import TradingState
+
+                ok, reason = await self._state_store.force_transition_internal(
+                    target=TradingState.CLOSE_ONLY,
+                    reason="broker_failover",
+                )
+                if not ok:
+                    logger.error("State transition to CLOSE_ONLY failed: %s", reason)
+                    add_event("broker.failover.state_failed", reason=reason)
+            except Exception as exc:
+                logger.error("Failed to transition state to CLOSE_ONLY: %s", exc)
+                add_event("broker.failover.state_exception", error=str(exc))
+
+            # 3. Record failover mode in Redis
+            await self._redis.set(_BROKER_MODE_KEY, BrokerMode.FAILOVER.value)
+            self._mode = BrokerMode.FAILOVER
+
+            # 4. Alert
+            if self._alerts:
+                try:
+                    await self._alerts.send_alert(
+                        level="CRITICAL",
+                        message=(
+                            f"BROKER FAILOVER activated: {self._consecutive_failures} "
+                            f"consecutive failures. Mode: CLOSE_ONLY. "
+                            f"Error: {result.error}"
+                        ),
+                    )
+                except Exception:
+                    logger.exception("Alert dispatch failed during failover (non-fatal)")
+
+            # 5. Publish event
+            try:
+                from ..events import topics as t
+
+                await self._event_bus.publish(
+                    t.SYSTEM_STATE_CHANGED,
+                    {
+                        "event": "broker_failover",
+                        "consecutive_failures": self._consecutive_failures,
+                        "error": result.error,
+                        "mode": BrokerMode.FAILOVER.value,
+                    },
+                )
+                add_event("broker.failover.published")
             except Exception:
-                logger.exception("Alert dispatch failed during failover (non-fatal)")
-
-        # 5. Publish event
-        try:
-            from ..events import topics as t
-
-            await self._event_bus.publish(
-                t.SYSTEM_STATE_CHANGED,
-                {
-                    "event": "broker_failover",
-                    "consecutive_failures": self._consecutive_failures,
-                    "error": result.error,
-                    "mode": BrokerMode.FAILOVER.value,
-                },
-            )
-        except Exception:
-            logger.exception("EventBus publish failed during failover (non-fatal)")
+                logger.exception("EventBus publish failed during failover (non-fatal)")
 
     # ------------------------------------------------------------------
     # Return to primary
