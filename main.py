@@ -233,6 +233,7 @@ async def _eod_scan(
             )
             try:
                 import pandas as _pd
+
                 stress_engine = StressEngine()
                 positions = portfolio.get_all_positions()
                 # Use empty series — real data fed from OMS ledger in production
@@ -245,14 +246,18 @@ async def _eod_scan(
                         stress_result.var_99,
                         stress_result.es_95,
                     )
-                    await alert_dispatcher.send_alert(
-                        level="WARNING",
-                        message=(
-                            f"Regime changed to {regime.value}: stress limits exceeded. "
-                            f"VaR99={stress_result.var_99:.2%} "
-                            f"ES95={stress_result.es_95:.2%}"
-                        ),
-                    ) if alert_dispatcher else None
+                    (
+                        await alert_dispatcher.send_alert(
+                            level="WARNING",
+                            message=(
+                                f"Regime changed to {regime.value}: stress limits exceeded. "
+                                f"VaR99={stress_result.var_99:.2%} "
+                                f"ES95={stress_result.es_95:.2%}"
+                            ),
+                        )
+                        if alert_dispatcher
+                        else None
+                    )
             except Exception:
                 logger.exception("Stress re-run after regime change failed (non-fatal)")
         await redis_client.set(_PREV_REGIME_KEY, regime.value)

@@ -22,7 +22,7 @@ from dataclasses import dataclass, field
 
 logger = logging.getLogger(__name__)
 
-_EDGE_ZERO_THRESHOLD = 1e-6   # b_ratio below this → emit edge=0 alert
+_EDGE_ZERO_THRESHOLD = 1e-6  # b_ratio below this → emit edge=0 alert
 
 
 @dataclass
@@ -44,12 +44,12 @@ class KellyStats:
     """
 
     strategy_name: str = "unknown"
-    lam: float = 0.97              # decay factor — recent trades matter more
-    min_sample_size: int = 30      # conservative prior until enough data
+    lam: float = 0.97  # decay factor — recent trades matter more
+    min_sample_size: int = 30  # conservative prior until enough data
 
     n_wins: int = field(default=0, init=False)
     n_losses: int = field(default=0, init=False)
-    ewma_win: float = field(default=0.0, init=False)   # EWMA avg win (USD)
+    ewma_win: float = field(default=0.0, init=False)  # EWMA avg win (USD)
     ewma_loss: float = field(default=0.0, init=False)  # EWMA avg loss (USD, positive)
 
     def update(self, pnl: float) -> None:

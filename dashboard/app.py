@@ -195,6 +195,7 @@ _PAGES = {
     "📋 Positions": "positions",
     "📈 Performance": "performance",
     "💹 TCA": "tca",
+    "🛡️ Reliability SLO": "reliability_slo",
     "🚨 Alerts & Runbooks": "alerts",
     "⚙️ Config": "config_ui",
 }

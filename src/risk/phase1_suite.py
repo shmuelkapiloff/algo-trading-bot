@@ -188,6 +188,7 @@ class CachedCostEstimator:
         it is called once; otherwise falls back to sequential calls.
         """
         import asyncio
+
         if hasattr(self._delegate, "get_spread_bps_batch"):
             batch = await self._delegate.get_spread_bps_batch(symbols)
             self._cache = batch
@@ -195,9 +196,13 @@ class CachedCostEstimator:
             # Sequential fallback (works for Phase 1 stubs)
             results = await asyncio.gather(
                 *[
-                    asyncio.to_thread(self._delegate.get_spread_bps, s)
-                    if not asyncio.iscoroutinefunction(self._delegate.get_spread_bps)
-                    else self._delegate.get_spread_bps(s)
+                    (
+                        asyncio.to_thread(self._delegate.get_spread_bps, s)
+                        if not asyncio.iscoroutinefunction(
+                            self._delegate.get_spread_bps
+                        )
+                        else self._delegate.get_spread_bps(s)
+                    )
                     for s in symbols
                 ]
             )

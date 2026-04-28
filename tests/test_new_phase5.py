@@ -85,6 +85,7 @@ class TestKellyStats:
 
     def test_kelly_fraction_zero_emits_metric_when_b_zero(self, caplog):
         import logging
+
         stats = KellyStats(strategy_name="edge_test", min_sample_size=1)
         # Force ewma_loss to 0 by only recording wins
         stats.update(100.0)
@@ -125,6 +126,7 @@ class TestKellyStats:
 
 def _make_signal(symbol="AAPL", confidence=0.8, stop_pct=0.02):
     from trading_bot.src.signals.models import SignalIntent, OrderSide
+
     return SignalIntent(
         symbol=symbol,
         side=OrderSide.BUY,
@@ -146,7 +148,9 @@ class TestFixedFractionalStep:
         # base = 100_000 * 0.01 / 0.02 = 50_000; capped at 10% = 10_000? no:
         # actually base < cap: 50_000 > 10_000 → capped at 10_000
         # Let's use a larger cap: 1.0 so base wins
-        step2 = FixedFractionalStep(max_risk_per_trade=0.01, absolute_max_position_pct=1.0)
+        step2 = FixedFractionalStep(
+            max_risk_per_trade=0.01, absolute_max_position_pct=1.0
+        )
         size = step2.apply(0.0, signal, ctx)
         assert size == pytest.approx(50_000, rel=0.01)
 
@@ -161,7 +165,9 @@ class TestFixedFractionalStep:
         assert size == pytest.approx(3_000, rel=0.01)
 
     def test_zero_portfolio(self):
-        step = FixedFractionalStep(max_risk_per_trade=0.01, absolute_max_position_pct=0.05)
+        step = FixedFractionalStep(
+            max_risk_per_trade=0.01, absolute_max_position_pct=0.05
+        )
         ctx = SizingContext(portfolio_value=0, current_open_risk=0.0)
         assert step.apply(0.0, _make_signal(), ctx) == 0.0
 
@@ -169,14 +175,18 @@ class TestFixedFractionalStep:
 class TestVolScaleStep:
     def test_scales_up_when_low_vol(self):
         step = VolScaleStep(target_vol=0.20, min_scale=0.5, max_scale=2.0)
-        ctx = SizingContext(portfolio_value=100_000, current_open_risk=0.0, realized_vol=0.10)
+        ctx = SizingContext(
+            portfolio_value=100_000, current_open_risk=0.0, realized_vol=0.10
+        )
         # scale = 0.20/0.10 = 2.0 (capped at max_scale)
         result = step.apply(1000.0, _make_signal(), ctx)
         assert result == pytest.approx(2000.0, rel=0.01)
 
     def test_skips_when_zero_vol(self):
         step = VolScaleStep()
-        ctx = SizingContext(portfolio_value=100_000, current_open_risk=0.0, realized_vol=0.0)
+        ctx = SizingContext(
+            portfolio_value=100_000, current_open_risk=0.0, realized_vol=0.0
+        )
         assert step.apply(500.0, _make_signal(), ctx) == 500.0
 
 
@@ -235,10 +245,12 @@ class TestFencingTokenRenewal:
     @pytest.fixture(autouse=True)
     def setup_keys(self):
         from trading_bot.src.security.fencing_tokens import generate_ephemeral_keys
+
         generate_ephemeral_keys()
 
     def test_renew_valid_emergency_token(self):
         from trading_bot.src.security import fencing_tokens as ft
+
         token = ft.create_internal_token(action_code="close_only", validity_seconds=60)
         renewed = ft.renew_token(token, extension_seconds=120)
         assert renewed.incident_id == token.incident_id
@@ -248,6 +260,7 @@ class TestFencingTokenRenewal:
 
     def test_cannot_renew_expired_token(self):
         from trading_bot.src.security import fencing_tokens as ft
+
         token = ft.create_internal_token(action_code="close_only", validity_seconds=1)
         time.sleep(1.1)
         with pytest.raises(ValueError, match="expired"):
@@ -255,12 +268,16 @@ class TestFencingTokenRenewal:
 
     def test_cannot_renew_non_emergency_token(self):
         from trading_bot.src.security import fencing_tokens as ft
-        token = ft.create_token(action_code="pause_orders", severity="critical", validity_seconds=300)
+
+        token = ft.create_token(
+            action_code="pause_orders", severity="critical", validity_seconds=300
+        )
         with pytest.raises(ValueError, match="emergency"):
             ft.renew_token(token)
 
     def test_renewal_capped_at_max_per_call(self):
         from trading_bot.src.security import fencing_tokens as ft
+
         token = ft.create_internal_token(action_code="close_only", validity_seconds=60)
         renewed = ft.renew_token(token, extension_seconds=9999)
         # Should be capped at _MAX_RENEWAL_SECONDS (300 s)
@@ -268,8 +285,11 @@ class TestFencingTokenRenewal:
 
     def test_renewal_respects_max_total_lifetime(self):
         from trading_bot.src.security import fencing_tokens as ft
+
         token = ft.create_internal_token(action_code="close_only", validity_seconds=10)
         # Cap total lifetime to 60s; requesting 300s extension should be capped
-        renewed = ft.renew_token(token, extension_seconds=300, max_total_lifetime_seconds=60)
+        renewed = ft.renew_token(
+            token, extension_seconds=300, max_total_lifetime_seconds=60
+        )
         # valid_until should not exceed issued_at + 60
         assert renewed.valid_until <= token.issued_at + 65  # small tolerance

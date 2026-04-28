@@ -41,11 +41,11 @@ logger = logging.getLogger(__name__)
 class SizingContext:
     """Immutable snapshot of portfolio state used by all pipeline steps."""
 
-    portfolio_value: float          # current equity (USD)
-    current_open_risk: float        # sum of open positions' risk as fraction
-    realized_vol: float = 0.0       # annualised realized vol (fraction, e.g. 0.18)
-    adv_dollars: float = 0.0        # average daily volume in USD for the symbol
-    rolling_sharpe_60d: float = 0.0 # 60-day rolling Sharpe (for future Kelly)
+    portfolio_value: float  # current equity (USD)
+    current_open_risk: float  # sum of open positions' risk as fraction
+    realized_vol: float = 0.0  # annualised realized vol (fraction, e.g. 0.18)
+    adv_dollars: float = 0.0  # average daily volume in USD for the symbol
+    rolling_sharpe_60d: float = 0.0  # 60-day rolling Sharpe (for future Kelly)
 
 
 # ---------------------------------------------------------------------------
@@ -89,7 +89,9 @@ class FixedFractionalStep(SizingStep):
         self._abs_max_pct = absolute_max_position_pct
         self._floor = stop_loss_floor_pct
 
-    def apply(self, size_dollars: float, signal: SignalIntent, ctx: SizingContext) -> float:
+    def apply(
+        self, size_dollars: float, signal: SignalIntent, ctx: SizingContext
+    ) -> float:
         if ctx.portfolio_value <= 0:
             return 0.0
         stop_pct = max(signal.stop_distance_pct or self._floor, self._floor)
@@ -115,7 +117,9 @@ class VolScaleStep(SizingStep):
         self._min = min_scale
         self._max = max_scale
 
-    def apply(self, size_dollars: float, signal: SignalIntent, ctx: SizingContext) -> float:
+    def apply(
+        self, size_dollars: float, signal: SignalIntent, ctx: SizingContext
+    ) -> float:
         if ctx.realized_vol <= 0:
             return size_dollars
         scale = min(max(self._target / ctx.realized_vol, self._min), self._max)
@@ -132,7 +136,9 @@ class LiquidityCapStep(SizingStep):
     def __init__(self, adv_fraction: float = 0.05) -> None:
         self._adv_frac = adv_fraction
 
-    def apply(self, size_dollars: float, signal: SignalIntent, ctx: SizingContext) -> float:
+    def apply(
+        self, size_dollars: float, signal: SignalIntent, ctx: SizingContext
+    ) -> float:
         if ctx.adv_dollars <= 0:
             return size_dollars
         return min(size_dollars, ctx.adv_dollars * self._adv_frac)
@@ -146,7 +152,9 @@ class GlobalRiskBudgetStep(SizingStep):
     def __init__(self, max_global_open_risk: float) -> None:
         self._max = max_global_open_risk
 
-    def apply(self, size_dollars: float, signal: SignalIntent, ctx: SizingContext) -> float:
+    def apply(
+        self, size_dollars: float, signal: SignalIntent, ctx: SizingContext
+    ) -> float:
         if ctx.portfolio_value <= 0:
             return 0.0
         stop_pct = max(signal.stop_distance_pct or 0.005, 0.005)
@@ -180,7 +188,9 @@ class HardCapStep(SizingStep):
     def __init__(self, hard_cap_pct: float) -> None:
         self._cap = hard_cap_pct
 
-    def apply(self, size_dollars: float, signal: SignalIntent, ctx: SizingContext) -> float:
+    def apply(
+        self, size_dollars: float, signal: SignalIntent, ctx: SizingContext
+    ) -> float:
         return min(size_dollars, ctx.portfolio_value * self._cap)
 
 
@@ -235,7 +245,9 @@ class PositionSizingPipeline:
         Returns 0 if any step reduces size to <= 0 or last_price is invalid.
         """
         if last_price <= 0:
-            logger.warning("[sizing] %s: invalid last_price=%.4f", signal.symbol, last_price)
+            logger.warning(
+                "[sizing] %s: invalid last_price=%.4f", signal.symbol, last_price
+            )
             return 0
 
         size = 0.0

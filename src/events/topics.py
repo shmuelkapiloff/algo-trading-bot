@@ -9,5 +9,5 @@ ORDER_REJECTED = "order.rejected"
 ORDER_CANCELED = "order.canceled"
 ORDER_EXPIRED = "order.expired"
 REGIME_UPDATED = "regime.updated"
-SYSTEM_STATE_CHANGED = "system.state_changed"   # broker failover, mode transitions
-BROKER_HEALTH_CHECK = "broker.health_check"     # periodic health-check result
+SYSTEM_STATE_CHANGED = "system.state_changed"  # broker failover, mode transitions
+BROKER_HEALTH_CHECK = "broker.health_check"  # periodic health-check result

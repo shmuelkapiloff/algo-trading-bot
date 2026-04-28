@@ -283,7 +283,7 @@ def verify_token(token: FencingToken) -> tuple[bool, str]:
 # ---------------------------------------------------------------------------
 
 _MAX_RENEWAL_SECONDS = 300  # 5 minutes — max allowed per renewal
-_MAX_TOTAL_SECONDS = 1800    # 30 minutes — absolute cap for any token chain
+_MAX_TOTAL_SECONDS = 1800  # 30 minutes — absolute cap for any token chain
 
 
 def renew_token(
@@ -367,7 +367,7 @@ def renew_token(
     # Build unsigned renewed token (same incident_id for audit continuity)
     renewed = dataclasses.replace(
         token,
-        issued_at=time.time(),   # refresh issued_at for the renewal window
+        issued_at=time.time(),  # refresh issued_at for the renewal window
         valid_until=new_valid_until,
         signature="",
     )

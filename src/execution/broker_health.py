@@ -45,8 +45,8 @@ _BROKER_MODE_KEY = "algotrader:broker_mode"
 
 class BrokerMode(str, Enum):
     PRIMARY = "primary"
-    FAILOVER = "failover"     # secondary broker, close-only
-    HALTED = "halted"         # no broker available
+    FAILOVER = "failover"  # secondary broker, close-only
+    HALTED = "halted"  # no broker available
 
 
 @dataclass
@@ -76,13 +76,13 @@ class BrokerHealthMonitor:
 
     def __init__(
         self,
-        primary,                        # AbstractBroker
-        event_bus,                      # EventBus
-        state_store,                    # RuntimeStateStore
+        primary,  # AbstractBroker
+        event_bus,  # EventBus
+        state_store,  # RuntimeStateStore
         redis_client,
         alert_dispatcher=None,
-        secondary=None,                 # AbstractBroker (optional)
-        oms_ledger=None,                # OmsLedger (for dual-sync validation)
+        secondary=None,  # AbstractBroker (optional)
+        oms_ledger=None,  # OmsLedger (for dual-sync validation)
         check_interval_s: float = 5.0,
         max_consecutive_failures: int = 3,
         latency_threshold_s: float = 10.0,
@@ -162,20 +162,26 @@ class BrokerHealthMonitor:
     async def _handle_result(self, result: HealthCheckResult) -> None:
         # Store latest health in Redis
         import json
+
         await self._redis.set(
             _BROKER_HEALTH_KEY,
-            json.dumps({
-                "ok": result.ok,
-                "latency_s": result.latency_s,
-                "error": result.error,
-                "ts": result.timestamp,
-            }),
+            json.dumps(
+                {
+                    "ok": result.ok,
+                    "latency_s": result.latency_s,
+                    "error": result.error,
+                    "ts": result.timestamp,
+                }
+            ),
             ex=30,  # 30-second TTL — stale = unhealthy
         )
 
         if result.ok:
             if self._consecutive_failures > 0:
-                logger.info("Primary broker healthy again (was %d failures)", self._consecutive_failures)
+                logger.info(
+                    "Primary broker healthy again (was %d failures)",
+                    self._consecutive_failures,
+                )
             self._consecutive_failures = 0
 
             # Attempt return-to-primary if we were in failover
@@ -191,7 +197,10 @@ class BrokerHealthMonitor:
             result.error,
         )
 
-        if self._consecutive_failures >= self._max_failures and self._mode == BrokerMode.PRIMARY:
+        if (
+            self._consecutive_failures >= self._max_failures
+            and self._mode == BrokerMode.PRIMARY
+        ):
             await self._trigger_failover(result)
 
     # ------------------------------------------------------------------
@@ -208,6 +217,7 @@ class BrokerHealthMonitor:
         # 1. Generate emergency fencing token
         try:
             from ..security.fencing_tokens import create_internal_token
+
             token = create_internal_token(
                 action_code="close_only",
                 validity_seconds=300,  # 5 minutes; renewable
@@ -220,6 +230,7 @@ class BrokerHealthMonitor:
         # 2. Transition to CLOSE_ONLY via RuntimeStateStore
         try:
             from ..runtime_state import TradingState
+
             ok, reason = await self._state_store.force_transition_internal(
                 target=TradingState.CLOSE_ONLY,
                 reason="broker_failover",
@@ -250,6 +261,7 @@ class BrokerHealthMonitor:
         # 5. Publish event
         try:
             from ..events import topics as t
+
             await self._event_bus.publish(
                 t.SYSTEM_STATE_CHANGED,
                 {
@@ -275,7 +287,9 @@ class BrokerHealthMonitor:
         logger.info("Attempting return to primary broker...")
 
         if self._oms_ledger is None:
-            logger.warning("No OMS ledger — skipping dual-sync before return to primary")
+            logger.warning(
+                "No OMS ledger — skipping dual-sync before return to primary"
+            )
             await self._complete_return_to_primary()
             return
 
