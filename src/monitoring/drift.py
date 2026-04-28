@@ -124,10 +124,15 @@ class DriftDetector:
     def __init__(
         self,
         window: int = 50,
-        alert_zscore: float = 2.0,
-        critical_zscore: float = 3.0,
+        alert_zscore: float = 2.5,
+        critical_zscore: float = 3.5,
         min_baseline_size: int = 30,
     ) -> None:
+        # alert_zscore=2.5 (not 2.0): Bonferroni-like correction for multiple comparisons.
+        # With 3 metrics per strategy, a 2.0σ threshold gives ~5% FPR per test
+        # → ~14% probability of ≥1 false alarm per daily check per strategy.
+        # Raising to 2.5σ reduces per-test FPR to ~1.2% → ~3.5% combined FPR.
+        # critical_zscore=3.5: requires very strong evidence before auto-intervention.
         self.window = window
         self.alert_zscore = alert_zscore
         self.critical_zscore = critical_zscore

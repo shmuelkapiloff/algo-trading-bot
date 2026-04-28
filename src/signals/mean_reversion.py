@@ -139,9 +139,21 @@ class MeanReversionStrategy(BaseStrategy):
         # 2. RSI oversold
         rsi_oversold = rsi_now < self.rsi_max_entry
 
-        # 3. Not a falling knife (allow up to 15% below SMA200)
+        # 3. Not a falling knife.
+        # Tightened from 15% → 10% below SMA200: at -14% a stock is already in
+        # structural decline and mean-reversion rarely works (2000-02, 2008-09, 2022).
+        # Additionally, require SMA200 to be rising or flat (slope over 20 days > -0.5%):
+        # a declining SMA200 means the trend is definitionally bearish at a multi-month
+        # horizon; buying dips into a declining long-term average is the falling knife trap.
         if sma200 is not None:
-            not_knife = price > sma200 * 0.85
+            sma200_20d_ago = (
+                close.rolling(200).mean().iloc[-21]
+                if len(df) >= 221
+                else sma200
+            )
+            sma200_slope_pct = (sma200 - sma200_20d_ago) / max(sma200_20d_ago, 1e-9)
+            sma200_rising_or_flat = sma200_slope_pct >= -0.005  # allow ≤ -0.5% over 20 days
+            not_knife = (price > sma200 * 0.90) and sma200_rising_or_flat
         else:
             not_knife = True  # no SMA200 data — pass through
 
