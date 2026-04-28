@@ -42,7 +42,8 @@ from ..analysis.market_regime import MarketRegime
 
 logger = logging.getLogger(__name__)
 
-_MIN_BARS = 60  # minimum bars needed to compute EMA50 + MACD reliably
+_MIN_BARS = 80          # minimum bars needed for EMA50 + MACD + 64-day momentum lookback
+_MOMENTUM_LOOKBACK = 64  # ~3 calendar months of trading days
 
 
 class MomentumStrategy(BaseStrategy):
@@ -73,6 +74,7 @@ class MomentumStrategy(BaseStrategy):
         ttl_seconds: int = 86_400,
         min_confidence: float = 0.55,
         min_price: float = 5.0,
+        min_momentum_return: float = 0.10,
         allowed_regimes: set[MarketRegime] | None = None,
     ) -> None:
         super().__init__(
@@ -91,6 +93,7 @@ class MomentumStrategy(BaseStrategy):
         self.ema_trend_period = ema_trend_period
         self.stop_distance_pct = stop_distance_pct
         self.ttl_seconds = ttl_seconds
+        self.min_momentum_return = min_momentum_return
 
     # ------------------------------------------------------------------
     # Strategy implementation
@@ -114,6 +117,20 @@ class MomentumStrategy(BaseStrategy):
             return None
 
         close = df["close_adj"]
+
+        # ── 3-Month Momentum Filter ───────────────────────────────────
+        # True momentum means the stock has already been moving up for
+        # ~3 months.  Without this, the RSI-crossover logic becomes a
+        # mean-reversion signal (recovery from oversold), not momentum.
+        momentum_return = (close.iloc[-1] / close.iloc[-_MOMENTUM_LOOKBACK - 1]) - 1
+        if momentum_return < self.min_momentum_return:
+            logger.debug(
+                "[momentum] %s rejected: 3m return=%.1f%% < min=%.1f%%",
+                symbol,
+                momentum_return * 100,
+                self.min_momentum_return * 100,
+            )
+            return None
 
         # ── Indicators ────────────────────────────────────────────────
         rsi = ta.momentum.RSIIndicator(close=close, window=self.rsi_period).rsi()

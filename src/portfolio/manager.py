@@ -84,6 +84,7 @@ class PortfolioManager:
         self._settings = settings
         self._positions: dict[str, Position] = {}
         self._equity: float = 0.0
+        self._pdt_count_cache: int = 0  # updated each time can_open_position() is called
 
     # ------------------------------------------------------------------
     # Startup
@@ -144,7 +145,7 @@ class PortfolioManager:
             "equity": self._equity,
             "open_positions": list(self._positions.keys()),
             "open_risk_fraction": self.get_open_risk(),
-            "pdt_daytrade_count": 0,  # updated by can_open_position()
+            "pdt_daytrade_count": self._pdt_count_cache,
         }
 
     # ------------------------------------------------------------------
@@ -167,6 +168,7 @@ class PortfolioManager:
 
         # PDT check
         pdt_count = await self._get_pdt_count()
+        self._pdt_count_cache = pdt_count  # keep cache fresh for build_portfolio_state()
         if pdt_count >= _PDT_LIMIT and self._settings.pdt.pdt_protection_enabled:
             return False, f"PDT limit reached ({pdt_count}/{_PDT_LIMIT})"
 

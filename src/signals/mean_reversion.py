@@ -170,12 +170,12 @@ class MeanReversionStrategy(BaseStrategy):
         # horizon; buying dips into a declining long-term average is the falling knife trap.
         if sma200 is not None:
             sma200_20d_ago = (
-                close.rolling(200).mean().iloc[-21]
-                if len(df) >= 221
-                else sma200
+                close.rolling(200).mean().iloc[-21] if len(df) >= 221 else sma200
             )
             sma200_slope_pct = (sma200 - sma200_20d_ago) / max(sma200_20d_ago, 1e-9)
-            sma200_rising_or_flat = sma200_slope_pct >= -0.005  # allow ≤ -0.5% over 20 days
+            sma200_rising_or_flat = (
+                sma200_slope_pct >= -0.005
+            )  # allow ≤ -0.5% over 20 days
             not_knife = (price > sma200 * 0.90) and sma200_rising_or_flat
         else:
             not_knife = True  # no SMA200 data — pass through

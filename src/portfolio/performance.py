@@ -32,7 +32,8 @@ class DailyMetrics:
     realized_pnl: float  # USD
     cumulative_return: float  # fraction (0.05 = 5%)
     sharpe_ratio: float | None  # annualised, None if < 30 days of history
-    max_drawdown: float  # fraction (−0.10 = −10%)
+    max_drawdown: float  # fraction (−10% = −0.10)
+    calmar_ratio: float | None  # annualised_return / abs(max_drawdown); None if MDD = 0
     win_rate: float  # fraction (0.60 = 60%)
     total_trades: int
 
@@ -68,6 +69,7 @@ class PerformanceTracker:
                 cumulative_return=0.0,
                 sharpe_ratio=None,
                 max_drawdown=0.0,
+                calmar_ratio=None,
                 win_rate=0.0,
                 total_trades=0,
             )
@@ -86,6 +88,7 @@ class PerformanceTracker:
 
         sharpe = self._compute_sharpe(daily_pnl)
         mdd = self._compute_max_drawdown(daily_pnl)
+        calmar = self._compute_calmar(daily_pnl, mdd)
 
         return DailyMetrics(
             as_of=as_of,
@@ -93,6 +96,7 @@ class PerformanceTracker:
             cumulative_return=cum_return,
             sharpe_ratio=sharpe,
             max_drawdown=mdd,
+            calmar_ratio=calmar,
             win_rate=win_rate,
             total_trades=total_trades,
         )
@@ -216,6 +220,19 @@ class PerformanceTracker:
         drawdown = (cumulative - rolling_max) / self._initial_equity
         return float(drawdown.min())
 
+    def _compute_calmar(self, daily_pnl: pd.Series, max_drawdown: float) -> float | None:
+        """Calmar ratio = annualised return / abs(max_drawdown).
+
+        Returns None if max drawdown is zero (no losses yet) or fewer
+        than 30 trading days of history — same guard as Sharpe.
+        """
+        if len(daily_pnl) < 30 or max_drawdown == 0.0:
+            return None
+        n_days = len(daily_pnl)
+        total_return = daily_pnl.sum() / self._initial_equity
+        annualised_return = total_return * (_TRADING_DAYS_PER_YEAR / n_days)
+        return float(annualised_return / abs(max_drawdown))
+
 
 # ===========================================================================
 # Per-Strategy Drawdown Monitor
@@ -227,10 +244,10 @@ class DrawdownAlert:
     """Fired when a strategy's drawdown from its high-water mark breaches -limit."""
 
     strategy_name: str
-    current_pnl: float          # cumulative P&L of this strategy (dollars)
-    hwm_pnl: float              # high-water mark P&L (dollars)
-    drawdown_pct: float         # (current_pnl - hwm_pnl) / initial_equity, negative
-    limit_pct: float            # threshold that was breached (positive, e.g. 0.08)
+    current_pnl: float  # cumulative P&L of this strategy (dollars)
+    hwm_pnl: float  # high-water mark P&L (dollars)
+    drawdown_pct: float  # (current_pnl - hwm_pnl) / initial_equity, negative
+    limit_pct: float  # threshold that was breached (positive, e.g. 0.08)
 
 
 @dataclass
@@ -240,7 +257,7 @@ class StrategySnapshot:
     strategy_name: str
     cumulative_pnl: float
     hwm_pnl: float
-    current_drawdown_pct: float   # negative; 0.0 = at high-water mark
+    current_drawdown_pct: float  # negative; 0.0 = at high-water mark
     is_paused: bool
     limit_pct: float
 
@@ -280,7 +297,7 @@ class StrategyDrawdownTracker:
     ) -> None:
         self._limit = drawdown_limit
         self._initial_equity = initial_equity
-        self._hwm: Dict[str, float] = {}      # strategy → peak cumulative P&L
+        self._hwm: Dict[str, float] = {}  # strategy → peak cumulative P&L
         self._current: Dict[str, float] = {}  # strategy → latest cumulative P&L
         self._paused: Set[str] = set()
 
@@ -288,9 +305,7 @@ class StrategyDrawdownTracker:
     # Public API
     # ------------------------------------------------------------------
 
-    def update(
-        self, strategy_name: str, current_pnl: float
-    ) -> Optional[DrawdownAlert]:
+    def update(self, strategy_name: str, current_pnl: float) -> Optional[DrawdownAlert]:
         """Update P&L for a strategy; return DrawdownAlert if limit breached.
 
         Parameters

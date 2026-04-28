@@ -145,7 +145,9 @@ class PITUniverse:
                 source = row.get("source", "csv").strip()
                 self.add_constituent(symbol, added, removed, source)
                 loaded += 1
-        logger.info("[PITUniverse] Loaded %d constituent records from %s", loaded, csv_path)
+        logger.info(
+            "[PITUniverse] Loaded %d constituent records from %s", loaded, csv_path
+        )
         return loaded
 
     # ------------------------------------------------------------------

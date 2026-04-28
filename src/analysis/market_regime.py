@@ -113,8 +113,8 @@ _V2_WEIGHTS: Dict[str, float] = {
 _BULL_THRESHOLD: float = 0.60
 _BEAR_THRESHOLD: float = 0.40
 # Volatility (annualised realised vol)
-_LOW_VOL_ANN: float = 0.16    # ≤ 16% ann → vol_score 1.0 (calm)
-_HIGH_VOL_ANN: float = 0.28   # ≥ 28% ann → vol_score 0.0 (stress)
+_LOW_VOL_ANN: float = 0.16  # ≤ 16% ann → vol_score 1.0 (calm)
+_HIGH_VOL_ANN: float = 0.28  # ≥ 28% ann → vol_score 0.0 (stress)
 # Breadth (% universe above EMA50)
 _STRONG_BREADTH: float = 0.65
 _WEAK_BREADTH: float = 0.40
@@ -128,11 +128,11 @@ _LIQ_WIDE_FRACTION: float = 0.25
 class RegimeScoreV2:
     """Decomposed 4-dimensional regime score returned by detect_regime_v2()."""
 
-    trend_score: float               # 0.0 bearish → 1.0 bullish
-    volatility_score: float          # 0.0 high-vol → 1.0 low-vol
-    breadth_score: Optional[float]   # None when universe_closes not provided
-    liquidity_score: Optional[float] # None when spread_bps not provided
-    composite_score: float           # weighted average of available dimensions
+    trend_score: float  # 0.0 bearish → 1.0 bullish
+    volatility_score: float  # 0.0 high-vol → 1.0 low-vol
+    breadth_score: Optional[float]  # None when universe_closes not provided
+    liquidity_score: Optional[float]  # None when spread_bps not provided
+    composite_score: float  # weighted average of available dimensions
     regime: MarketRegime
     n_breadth_symbols: int = 0
 
@@ -145,7 +145,9 @@ class RegimeScoreV2:
             parts.append(f"breadth={self.breadth_score:.2f}({self.n_breadth_symbols})")
         if self.liquidity_score is not None:
             parts.append(f"liq={self.liquidity_score:.2f}")
-        parts.append(f"→ composite={self.composite_score:.3f} [{self.regime.value.upper()}]")
+        parts.append(
+            f"→ composite={self.composite_score:.3f} [{self.regime.value.upper()}]"
+        )
         return "RegimeV2[" + "  ".join(parts) + "]"
 
 
@@ -174,9 +176,9 @@ def _v2_volatility_score(close: pd.Series) -> float:
         return 0.5
     daily_ret = close.pct_change().dropna()
     ewma_var = daily_ret.ewm(alpha=1 - 0.94, adjust=False).var()
-    ewma_vol = float(ewma_var.iloc[-1] ** 0.5) * (252 ** 0.5)
+    ewma_vol = float(ewma_var.iloc[-1] ** 0.5) * (252**0.5)
     vol_20d = (
-        float(daily_ret.iloc[-20:].std()) * (252 ** 0.5)
+        float(daily_ret.iloc[-20:].std()) * (252**0.5)
         if len(daily_ret) >= 20
         else ewma_vol
     )
