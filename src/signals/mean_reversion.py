@@ -8,9 +8,13 @@ All conditions must be true at EOD for a BUY signal:
      (price <= lower_band * (1 + bb_entry_pct))
   2. RSI(14) < rsi_max_entry (depressed RSI confirms oversold condition)
   3. Price is not in a strong downtrend:
-     (price > SMA200 OR price is within 15% below SMA200)
-     — avoids catching falling knives in bear markets
+     (price > SMA200 * 0.90) AND (SMA200 slope over 20 days > -0.5%)
+     — avoids falling-knife entries in bear markets (2000–02, 2008–09, 2022)
   4. Market regime is "sideways" or "bull" (from regime_cache)
+  5. **Cost hurdle:** expected gross return > round_trip_cost_bps * cost_coverage_ratio
+     Expected return = (mid_band - price) / price  (mean-reversion target)
+     Round-trip cost  = spread + slippage (≈ 15 bps default)
+     If the stock is too close to its midline, the trade doesn't pay for itself.
 
 Confidence score
 ----------------
@@ -25,8 +29,14 @@ because mean-reversion trades have a clearly invalidating level (break of band).
 
 Hold period
 -----------
-ttl_seconds = 86400 (1 day). Exit when price returns to midline (BB center)
+ttl_seconds = 86400 (1 trading day). Exit when price returns to midline (BB center)
 or after TTL expires. The portfolio manager handles the exit.
+
+Transaction cost context
+------------------------
+At 2–7 day avg hold and ~15 bps round-trip cost, this strategy needs ~1,050–1,500 bps/year
+gross return just to break even on a $10K portfolio at 70–100 trades/year. The cost hurdle
+filter (condition 5) ensures each individual trade clears the cost bar before entry.
 """
 
 from __future__ import annotations
@@ -52,12 +62,21 @@ class MeanReversionStrategy(BaseStrategy):
 
     Parameters (tunable via config/strategies.yaml)
     ------------------------------------------------
-    bb_period       : Bollinger Band lookback (default 20)
-    bb_std          : Number of standard deviations for bands (default 2.0)
-    bb_entry_pct    : Buy within this % of the lower band (default 0.02 = 2%)
-    rsi_period      : RSI lookback (default 14)
-    rsi_max_entry   : Only enter when RSI < this (default 40)
-    stop_distance_pct : Initial stop (default 0.025 = 2.5%)
+    bb_period            : Bollinger Band lookback (default 20)
+    bb_std               : Number of standard deviations for bands (default 2.0)
+    bb_entry_pct         : Buy within this % of the lower band (default 0.02 = 2%)
+    rsi_period           : RSI lookback (default 14)
+    rsi_max_entry        : Only enter when RSI < this (default 40)
+    stop_distance_pct    : Initial stop (default 0.025 = 2.5%)
+    round_trip_cost_bps  : Estimated round-trip trading cost in bps
+                           (spread + slippage, default 15 bps).
+                           Used in cost-hurdle gate: the expected mean-reversion
+                           return from price → midline must exceed this ×
+                           cost_coverage_ratio before a signal is emitted.
+    cost_coverage_ratio  : Minimum multiple of round-trip cost the expected
+                           return must clear (default 1.5 = 22.5 bps hurdle
+                           at 15 bps cost). Rejects trades where the stock
+                           is too close to its midline to cover execution costs.
     """
 
     def __init__(
@@ -72,6 +91,8 @@ class MeanReversionStrategy(BaseStrategy):
         min_confidence: float = 0.60,
         min_price: float = 10.0,
         allowed_regimes: set[MarketRegime] | None = None,
+        round_trip_cost_bps: float = 15.0,
+        cost_coverage_ratio: float = 1.5,
     ) -> None:
         super().__init__(
             name="mean_reversion",
@@ -87,6 +108,8 @@ class MeanReversionStrategy(BaseStrategy):
         self.rsi_max_entry = rsi_max_entry
         self.stop_distance_pct = stop_distance_pct
         self.ttl_seconds = ttl_seconds
+        self.round_trip_cost_bps = round_trip_cost_bps
+        self.cost_coverage_ratio = cost_coverage_ratio
 
     # ------------------------------------------------------------------
     # Strategy implementation
@@ -178,7 +201,25 @@ class MeanReversionStrategy(BaseStrategy):
         vol_component = max(vol_component, 0.0)
 
         confidence = reversion_component + rsi_component + vol_component
-
+        # ── Cost hurdle gate (Issue #7 fix) ────────────────────────
+        # Mean reversion target = price → midline.  Express as a fraction of price.
+        # The expected gross return must exceed round_trip_cost × coverage_ratio.
+        # Example defaults: 15 bps cost × 1.5 = 22.5 bps minimum expected return.
+        # A stock trading at 99% of its midline (1% away) clears 100 bps easily.
+        # A stock at 99.8% of midline (0.2% = 20 bps away) does NOT clear 22.5 bps.
+        expected_return_bps = ((mid_band - price) / max(price, 1e-9)) * 10_000
+        cost_hurdle_bps = self.round_trip_cost_bps * self.cost_coverage_ratio
+        if expected_return_bps < cost_hurdle_bps:
+            logger.debug(
+                "[mean_reversion] %s rejected by cost hurdle: "
+                "expected_return=%.1f bps < hurdle=%.1f bps (cost=%.1f × %.1f)",
+                symbol,
+                expected_return_bps,
+                cost_hurdle_bps,
+                self.round_trip_cost_bps,
+                self.cost_coverage_ratio,
+            )
+            return None
         # ── Viability check ───────────────────────────────────────────
         if not self._check_viability(symbol, confidence, price):
             return None
