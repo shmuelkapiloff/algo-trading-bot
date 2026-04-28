@@ -1,0 +1,45 @@
+# AlgoTrader Pro — Strategy Parameters (Phase 1)
+# Each strategy block maps to a class in src/signals/.
+# Strategies are enabled/disabled without touching Python code.
+
+strategies:
+  momentum:
+    enabled: true
+    class: src.signals.momentum.MomentumStrategy
+    # ── Signal Filters ───────────────────────────────────────────────────────
+    rsi_period: 14
+    rsi_oversold: 35 # entry only when RSI crosses above this
+    rsi_overbought: 70 # exit / no-entry when above this
+    macd_fast: 12
+    macd_slow: 26
+    macd_signal: 9
+    ema_trend_period: 50 # price must be above EMA50 (long-only trend filter)
+    min_adv_usd: 1_000_000 # minimum 20-day ADV in USD for universe entry
+    min_price: 5.00 # reject penny stocks
+    # ── Signal Quality ───────────────────────────────────────────────────────
+    min_confidence: 0.55 # minimum confidence to emit a SignalIntent
+    stop_distance_pct: 0.03 # ATR-multiple stop (3% default if ATR unavailable)
+    # ── Regime Filter ────────────────────────────────────────────────────────
+    allowed_regimes: [bull, sideways] # do not enter in bear market
+    # ── Hold Period ──────────────────────────────────────────────────────────
+    ttl_seconds: 86400 # signal valid for 1 trading day
+
+  mean_reversion:
+    enabled: true
+    class: src.signals.mean_reversion.MeanReversionStrategy
+    # ── Bollinger Bands ───────────────────────────────────────────────────────
+    bb_period: 20
+    bb_std: 2.0 # bands at ±2σ
+    bb_entry_pct: 0.02 # enter when price is within 2% of lower band
+    # ── RSI confirmation ─────────────────────────────────────────────────────
+    rsi_period: 14
+    rsi_max_entry: 40 # only enter when RSI is depressed
+    # ── Universe ─────────────────────────────────────────────────────────────
+    min_adv_usd: 2_000_000 # higher liquidity requirement for MR
+    min_price: 10.00
+    # ── Signal Quality ────────────────────────────────────────────────────────
+    min_confidence: 0.60
+    stop_distance_pct: 0.025 # tighter stop for mean-reversion
+    # ── Regime Filter ─────────────────────────────────────────────────────────
+    allowed_regimes: [sideways, bull] # mean-reversion works in ranging markets
+    ttl_seconds: 86400

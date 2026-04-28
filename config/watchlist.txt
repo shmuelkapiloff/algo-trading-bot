@@ -1,0 +1,81 @@
+# AlgoTrader Pro — Default Watchlist (S&P 500 large-cap universe)
+# One symbol per line. Lines starting with # are comments.
+# Updated: Phase 1 — 60 highly liquid large-cap stocks.
+# Source: S&P 500 top-60 by ADV as of 2024 (update quarterly).
+#
+# Exclusions (see config.yaml universe_exclusions):
+#   - No leveraged ETFs (TQQQ, SQQQ, UPRO, SPXU, UVXY, SVXY, LABU, LABD, FAS, FAZ)
+#   - No stocks with ADV < 500K
+#   - No stocks with market cap < $2B
+
+# ── Mega-cap tech ──────────────────────────────────────────────
+AAPL
+MSFT
+NVDA
+AMZN
+GOOGL
+GOOG
+META
+TSLA
+AVGO
+ORCL
+
+# ── Large-cap tech ─────────────────────────────────────────────
+AMD
+INTC
+QCOM
+TXN
+MU
+AMAT
+LRCX
+KLAC
+MRVL
+ADBE
+
+# ── Financials ─────────────────────────────────────────────────
+JPM
+BAC
+WFC
+GS
+MS
+BLK
+SCHW
+C
+USB
+AXP
+
+# ── Healthcare ─────────────────────────────────────────────────
+UNH
+JNJ
+LLY
+ABBV
+MRK
+ABT
+TMO
+DHR
+AMGN
+GILD
+
+# ── Consumer / Industrials ────────────────────────────────────
+AMZN
+HD
+MCD
+NKE
+SBUX
+TGT
+WMT
+COST
+PG
+KO
+
+# ── Energy / Materials ────────────────────────────────────────
+XOM
+CVX
+COP
+SLB
+FCX
+
+# ── ETFs (broad index, non-leveraged — for regime detection) ──
+SPY
+QQQ
+IWM

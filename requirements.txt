@@ -1,0 +1,49 @@
+# AlgoTrader Pro — Runtime Dependencies (Phase 1 Lean)
+# Install: pip install -r requirements.txt
+
+# ── Broker & Market Data ──────────────────────────────────────────────────────
+alpaca-py>=0.28.0          # Alpaca Markets REST + WebSocket + paper trading
+
+# ── Data / Computation ───────────────────────────────────────────────────────
+pandas>=2.2.0
+numpy>=1.26.0
+ta>=0.11.0                 # Technical Analysis: RSI, MACD, BB, EMA
+
+# ── Database ─────────────────────────────────────────────────────────────────
+sqlalchemy>=2.0.0          # Async ORM
+asyncpg>=0.29.0            # PostgreSQL async driver (prod)
+aiosqlite>=0.19.0          # SQLite async driver (dev)
+
+# ── Redis (state + event bus Phase 2) ────────────────────────────────────────
+redis>=5.0.0               # redis.asyncio included
+
+# ── Async HTTP ───────────────────────────────────────────────────────────────
+httpx>=0.27.0              # replaces requests everywhere (async-native)
+
+# ── Config & Environment ─────────────────────────────────────────────────────
+pydantic>=2.7.0
+pydantic-settings>=2.3.0   # BaseSettings for config validation
+python-dotenv>=1.0.0
+
+# ── Scheduling ───────────────────────────────────────────────────────────────
+apscheduler>=3.10.4
+
+# ── Retry ────────────────────────────────────────────────────────────────────
+tenacity>=8.3.0
+
+# ── Logging ──────────────────────────────────────────────────────────────────
+loguru>=0.7.2
+
+# ── Dashboard (separate process) ─────────────────────────────────────────────
+streamlit>=1.35.0
+
+# ── Control Plane API ────────────────────────────────────────────────────────
+fastapi>=0.111.0
+uvicorn[standard]>=0.29.0
+fastapi-limiter>=0.1.6
+
+# ── Monitoring ───────────────────────────────────────────────────────────────
+prometheus-client>=0.20.0
+
+# ── Timezone ─────────────────────────────────────────────────────────────────
+pytz>=2024.1

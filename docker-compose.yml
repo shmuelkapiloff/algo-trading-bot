@@ -1,0 +1,130 @@
+version: "3.9"
+
+# ─────────────────────────────────────────────────────────────────────────────
+# AlgoTrader Pro — Docker Compose (development / paper trading)
+#
+# Services
+# --------
+#   trading-bot  : main.py — the trading engine
+#   dashboard    : Streamlit read-only monitor (port 8501)
+#   redis        : In-memory state (positions, regime cache, PDT counter)
+#   postgres     : Optional persistent storage (comment out for SQLite dev)
+#
+# Usage
+# -----
+#   cp .env.example .env       # fill in your API keys
+#   docker compose up -d
+#   docker compose logs -f trading-bot
+#
+# Paper-trading mode is the default (ALPACA_PAPER=true).
+# To switch to live trading: set ALPACA_PAPER=false in .env (EXTREME CAUTION).
+# ─────────────────────────────────────────────────────────────────────────────
+
+x-common-env: &common-env
+  DATABASE_URL:          ${DATABASE_URL:-postgresql+asyncpg://algotrader:algotrader@postgres:5432/algotrader}
+  REDIS_URL:             ${REDIS_URL:-redis://redis:6379/0}
+  ALPACA_API_KEY:        ${ALPACA_API_KEY}
+  ALPACA_SECRET_KEY:     ${ALPACA_SECRET_KEY}
+  ALPACA_PAPER:          ${ALPACA_PAPER:-true}
+  FENCING_SECRET:        ${FENCING_SECRET}
+  CONTROL_API_TOKEN:     ${CONTROL_API_TOKEN}
+  TELEGRAM_BOT_TOKEN:    ${TELEGRAM_BOT_TOKEN:-}
+  TELEGRAM_CHAT_ID:      ${TELEGRAM_CHAT_ID:-}
+  LOG_LEVEL:             ${LOG_LEVEL:-INFO}
+  TZ:                    America/New_York
+
+services:
+
+  # ── Redis ──────────────────────────────────────────────────────────────────
+  redis:
+    image: redis:7-alpine
+    restart: unless-stopped
+    command: redis-server --save 60 1 --loglevel warning
+    volumes:
+      - redis_data:/data
+    healthcheck:
+      test:     ["CMD", "redis-cli", "ping"]
+      interval: 10s
+      timeout:  5s
+      retries:  5
+    networks:
+      - algotrader
+
+  # ── PostgreSQL ─────────────────────────────────────────────────────────────
+  postgres:
+    image: postgres:15-alpine
+    restart: unless-stopped
+    environment:
+      POSTGRES_USER:     algotrader
+      POSTGRES_PASSWORD: algotrader
+      POSTGRES_DB:       algotrader
+    volumes:
+      - postgres_data:/var/lib/postgresql/data
+    healthcheck:
+      test:     ["CMD-SHELL", "pg_isready -U algotrader"]
+      interval: 10s
+      timeout:  5s
+      retries:  5
+    networks:
+      - algotrader
+
+  # ── Trading Bot ────────────────────────────────────────────────────────────
+  trading-bot:
+    build:
+      context:    .
+      dockerfile: Dockerfile
+      target:     runtime
+    restart: unless-stopped
+    depends_on:
+      redis:
+        condition: service_healthy
+      postgres:
+        condition: service_healthy
+    environment:
+      <<: *common-env
+    volumes:
+      - ./config:/app/config:ro
+      - bot_logs:/app/logs
+    ports:
+      - "8000:8000"     # FastAPI control-plane
+    networks:
+      - algotrader
+    stop_grace_period: 30s
+
+  # ── Streamlit Dashboard ────────────────────────────────────────────────────
+  dashboard:
+    build:
+      context:    .
+      dockerfile: Dockerfile
+      target:     runtime
+    restart: unless-stopped
+    depends_on:
+      redis:
+        condition: service_healthy
+      postgres:
+        condition: service_healthy
+    environment:
+      # Dashboard uses SYNC SQLAlchemy URLs (no async prefix)
+      DATABASE_URL:  ${DATABASE_URL_SYNC:-postgresql://algotrader:algotrader@postgres:5432/algotrader}
+      REDIS_URL:     ${REDIS_URL:-redis://redis:6379/0}
+      TZ:            America/New_York
+    command:
+      - streamlit
+      - run
+      - dashboard/app.py
+      - --server.port=8501
+      - --server.address=0.0.0.0
+      - --server.headless=true
+    ports:
+      - "8501:8501"
+    networks:
+      - algotrader
+
+volumes:
+  redis_data:
+  postgres_data:
+  bot_logs:
+
+networks:
+  algotrader:
+    driver: bridge

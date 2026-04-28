@@ -1,0 +1,11 @@
+# AlgoTrader Pro — Development / Test Dependencies
+# Install: pip install -r requirements-dev.txt
+-r requirements.txt
+
+pytest>=8.2.0
+pytest-asyncio>=0.23.0          # async test runner (asyncio_mode = "auto")
+fakeredis[aioredis]>=2.23.0     # in-memory Redis for unit tests
+pytest-cov>=5.0.0               # coverage
+ruff>=0.4.0                     # linter + formatter
+mypy>=1.10.0                    # type checker
+sqlalchemy[mypy]>=2.0.0         # SQLAlchemy stubs

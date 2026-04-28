@@ -1,0 +1,57 @@
+# AlgoTrader Pro — Main Configuration (Phase 1 Lean)
+# All runtime-tunable parameters live here. Code reads this file at startup
+# via src/config.py (Pydantic Settings). Never hardcode numbers in strategy code.
+
+# ── Capital & Risk ────────────────────────────────────────────────────────────
+capital:
+  initial_portfolio_value: 10000.00 # USD — update to real equity at live launch
+
+risk:
+  max_risk_per_trade: 0.01 # 1% of portfolio risked per trade (Fixed-Fractional)
+  absolute_max_position_pct: 0.03 # 3% hard cap per position (dollars / portfolio)
+  max_global_open_risk: 0.02 # 2% total simultaneous open risk across all positions
+  stop_loss_floor_pct: 0.03 # 3% stop-loss if strategy doesn't supply one
+  max_positions: 10 # maximum concurrent open positions
+
+# ── Trading Mode ─────────────────────────────────────────────────────────────
+trading:
+  mode: paper # paper | live
+  direction: long_only # long_only (Phase 1-3); short allowed Phase 4+
+  style: swing_eod # swing_eod | intraday (intraday = Phase 4+)
+
+# ── PDT Guard (Pattern Day Trader) ───────────────────────────────────────────
+pdt:
+  enabled: true
+  max_day_trades_per_5_days: 3 # FINRA rule: <$25K account = max 3 day-trades
+  portfolio_value_threshold: 25000 # PDT rule applies below this value
+
+# ── Execution ─────────────────────────────────────────────────────────────────
+execution:
+  order_type: market # market | limit (limit Phase 2+)
+  time_in_force: day
+  retry_attempts: 3
+  retry_backoff_seconds: 2
+
+# ── Data Quality ─────────────────────────────────────────────────────────────
+data_quality:
+  max_bar_lag_seconds: 90 # alert if bar timestamp > 90s stale
+  volume_divergence_threshold: 0.30 # alert if Alpaca/Polygon volume diverges > 30%
+  min_bars_required: 60 # minimum history bars needed to compute indicators
+
+# ── Market Hours (NYSE, ET) ───────────────────────────────────────────────────
+market:
+  timezone: America/New_York
+  open: "09:30"
+  close: "16:00"
+  eod_scan_trigger: "15:55" # 5 min before close — after most news settled
+  days: [mon, tue, wed, thu, fri]
+
+# ── Monitoring ────────────────────────────────────────────────────────────────
+monitoring:
+  prometheus_port: 9090
+  log_level: INFO
+
+# ── Shutdown ──────────────────────────────────────────────────────────────────
+shutdown:
+  signal_queue_drain_timeout_seconds: 10
+  oms_flush_timeout_seconds: 5
