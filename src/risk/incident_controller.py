@@ -36,6 +36,7 @@ Usage
 from __future__ import annotations
 
 import logging
+import time
 import uuid
 from dataclasses import dataclass, field
 from datetime import datetime, timezone
@@ -43,6 +44,14 @@ from enum import Enum
 from typing import Any, Dict, List, Optional
 
 logger = logging.getLogger(__name__)
+
+# ---------------------------------------------------------------------------
+# Phase 5.5 — Cascade circuit-breaker constants
+# ---------------------------------------------------------------------------
+# If _CASCADE_THRESHOLD CRITICAL incidents accumulate within
+# _CASCADE_WINDOW_SECONDS the controller auto-escalates to EMERGENCY.
+_CASCADE_THRESHOLD: int = 3
+_CASCADE_WINDOW_SECONDS: float = 60.0
 
 
 class Severity(str, Enum):
@@ -109,6 +118,8 @@ class IncidentController:
         self._incidents: Dict[str, Incident] = {}
         self._active_severity: Optional[Severity] = None
         self._position_size_multiplier: float = 1.0
+        # Phase 5.5 — cascade detection: wall-clock timestamps of recent CRITICALs
+        self._cascade_timestamps: List[float] = []
 
     # ------------------------------------------------------------------
     # Public API
@@ -257,6 +268,36 @@ class IncidentController:
             urgent=True,
         )
         await self._publish_event("incident.critical", incident)
+
+        # Phase 5.5 — cascade detection: auto-escalate to EMERGENCY if
+        # _CASCADE_THRESHOLD CRITICALs accumulate within _CASCADE_WINDOW_SECONDS.
+        now = time.monotonic()
+        self._cascade_timestamps.append(now)
+        # Prune stale timestamps outside the window
+        cutoff = now - _CASCADE_WINDOW_SECONDS
+        self._cascade_timestamps = [t for t in self._cascade_timestamps if t >= cutoff]
+        if len(self._cascade_timestamps) >= _CASCADE_THRESHOLD:
+            logger.critical(
+                "[incident] CASCADE DETECTED: %d CRITICAL incidents in %.0fs — "
+                "auto-activating circuit breaker (EMERGENCY)",
+                len(self._cascade_timestamps),
+                _CASCADE_WINDOW_SECONDS,
+            )
+            self._cascade_timestamps.clear()
+            cascade_incident = Incident(
+                incident_id=str(uuid.uuid4()),
+                incident_type=IncidentType.MANUAL,
+                severity=Severity.EMERGENCY,
+                status=IncidentStatus.OPEN,
+                details={
+                    "reason": "cascade_auto_activation",
+                    "trigger_incident": incident.incident_id,
+                },
+                opened_at=datetime.now(timezone.utc),
+            )
+            self._incidents[cascade_incident.incident_id] = cascade_incident
+            await self._handle_emergency(cascade_incident)
+            self._update_active_severity(Severity.EMERGENCY)
 
     async def _handle_emergency(self, incident: Incident) -> None:
         """EMERGENCY: circuit breaker, reduce-only mode, maximum alert."""
